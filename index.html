@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Stomp City</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Chivo:wght@400;600;800&display=swap">
+<style>
+/* Layout: one full-screen canvas (the city at night) with HUD and overlay cards floating on top.
+   Deliberately single-theme: a night city reads the same on any host. */
+:root{
+  --sky-top:#12142e;
+  --sky-low:#2c2252;
+  --ink:#f6efe2;
+  --ink-dim:#b9b2c9;
+  --jade:#2f8a74;
+  --jade-dark:#123a31;
+  --amber:#ffc35c;
+  --coral:#ff6a4d;
+  --card:rgba(18,18,40,.88);
+  --line:rgba(255,195,92,.28);
+  --display:"Lilita One","Arial Rounded MT Bold","Trebuchet MS",sans-serif;
+  --body:"Chivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--sky-top);color:var(--ink);font-family:var(--body);overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block}
+video{position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;left:0;top:0}
+
+/* HUD */
+.hud{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 0;display:grid;
+  grid-template-columns:1fr auto 1fr;align-items:start;gap:12px;pointer-events:none}
+.hud[hidden]{display:none!important}
+.meter{display:grid;gap:4px;min-width:0}
+.meter .lab{font:600 11px/1 var(--body);letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase}
+.bar{height:12px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden;border:1px solid rgba(255,255,255,.15)}
+.bar i{display:block;height:100%;width:100%;background:var(--jade);transition:width .15s}
+.bar.roar i{background:var(--amber)}
+.bar.roar.ready{box-shadow:0 0 12px var(--amber)}
+.clock{font:400 34px/1 var(--display);font-variant-numeric:tabular-nums;text-align:center;text-shadow:0 2px 0 #000}
+.score{text-align:right;font:400 26px/1 var(--display);font-variant-numeric:tabular-nums;text-shadow:0 2px 0 #000}
+.score small{display:block;font:600 11px/1.4 var(--body);letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase}
+
+/* Overlay cards */
+.overlay{position:fixed;inset:0;display:grid;place-items:center;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);overflow-y:auto}
+.card{width:min(440px,100%);background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px 20px;display:grid;gap:14px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+h1{margin:0;font:400 54px/.95 var(--display);color:var(--amber);text-wrap:balance;text-shadow:0 4px 0 var(--jade-dark)}
+h2{margin:0;font:400 30px/1 var(--display);text-wrap:balance}
+p{margin:0;line-height:1.45;color:var(--ink-dim);font-size:15px}
+.moves{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:baseline;margin:0;font-size:15px}
+.moves dt{font:400 18px/1.2 var(--display);color:var(--amber)}
+.moves dd{margin:0;color:var(--ink);line-height:1.35}
+.setup{font-size:13px;border-top:1px solid var(--line);padding-top:12px}
+.btns{display:flex;flex-wrap:wrap;gap:10px}
+button{font:400 22px/1 var(--display);border:0;border-radius:14px;padding:15px 20px;cursor:pointer;color:#1b1430;background:var(--amber);flex:1 1 auto;box-shadow:0 4px 0 #b4802a}
+button:active{transform:translateY(2px);box-shadow:0 2px 0 #b4802a}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none;font-size:18px}
+button:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.status{font:600 14px/1.4 var(--body);color:var(--amber);min-height:1.4em}
+.err{color:var(--coral)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stats div{background:rgba(255,255,255,.06);border-radius:12px;padding:10px;display:grid;gap:4px;min-width:0}
+.stats b{font:400 26px/1 var(--display);font-variant-numeric:tabular-nums;color:var(--ink)}
+.stats span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim)}
+.banner{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 22%);transform:translateX(-50%);background:var(--card);border:1px solid var(--line);
+  padding:10px 16px;border-radius:12px;font:600 15px/1.3 var(--body);text-align:center;max-width:calc(100% - 32px);pointer-events:none}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<video id="cam" playsinline muted autoplay></video>
+
+<div class="hud" id="hud" hidden>
+  <div class="meter">
+    <span class="lab">Health</span>
+    <div class="bar"><i id="hpBar"></i></div>
+    <span class="lab" style="margin-top:6px">Roar</span>
+    <div class="bar roar" id="roarWrap"><i id="roarBar" style="width:0%"></i></div>
+  </div>
+  <div class="clock" id="clock">3:00</div>
+  <div class="score"><span id="score">0</span><small id="comboLab">Score</small></div>
+</div>
+
+<div class="banner" id="banner" hidden></div>
+
+<!-- Start screen -->
+<div class="overlay" id="startScreen">
+  <div class="card">
+    <h1>Stomp City</h1>
+    <p>You are the monster. Your phone's camera reads your body, and the kaiju copies every move. Wreck the city for 3 minutes.</p>
+    <dl class="moves">
+      <dt>Punch</dt><dd>Throw fast punches into buildings. Squat to hit the short ones.</dd>
+      <dt>Stomp</dt><dd>Knee up, then slam your foot down. Crushes tanks.</dd>
+      <dt>Reach</dt><dd>Punch high to swat helicopters and missiles.</dd>
+      <dt>Guard</dt><dd>Both fists up by your face blocks incoming fire. Or slip out of the way.</dd>
+      <dt>Roar</dt><dd>When the roar bar is full, raise both arms overhead and hold.</dd>
+    </dl>
+    <p class="setup">Setup: phone upright at about waist height, then stand 6 to 8 feet back so your whole body is in frame. Good lighting helps a lot.</p>
+    <div class="status" id="status"></div>
+    <div class="btns">
+      <button id="startBtn" type="button">Start</button>
+      <button id="demoBtn" class="ghost" type="button">Watch demo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calibration -->
+<div class="overlay" id="calibScreen" hidden style="place-items:start center">
+  <div class="card" style="margin-top:12vh">
+    <h2 id="calibTitle">Step into frame</h2>
+    <p id="calibMsg">Back up until your head and feet are both visible.</p>
+  </div>
+</div>
+
+<!-- Pause -->
+<div class="overlay" id="pauseScreen" hidden>
+  <div class="card">
+    <h2>Paused</h2>
+    <p>Recenter if the monster drifted after you moved the phone or changed your spot.</p>
+    <div class="btns">
+      <button id="resumeBtn" type="button">Resume</button>
+      <button id="recenterBtn" class="ghost" type="button">Recenter</button>
+      <button id="quitBtn" class="ghost" type="button">End round</button>
+    </div>
+  </div>
+</div>
+
+<!-- End -->
+<div class="overlay" id="endScreen" hidden>
+  <div class="card">
+    <h2 id="endTitle">City flattened</h2>
+    <p id="endSub"></p>
+    <div class="stats" id="stats"></div>
+    <div class="btns">
+      <button id="againBtn" type="button">Play again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------- constants ---------- */
+const ROUND_SECONDS = 180;
+const MP_VERSION = "0.10.14";
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
+const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+const L = {nose:0,lEar:7,rEar:8,lSh:11,rSh:12,lEl:13,rEl:14,lWr:15,rWr:16,lHip:23,rHip:24,lKn:25,rKn:26,lAn:27,rAn:28,lFt:31,rFt:32};
+const COL = {
+  body:"#2f8a74", bodyLit:"#3fa88e", dark:"#123a31", belly:"#e7b46c", eye:"#ffd23f", spike:"#e7b46c",
+  bldg:["#33395f","#3d3560","#2c4458","#463a58","#2f3a52"], win:"#ffc35c", winOff:"#22253f",
+  ground:"#1a1730", line:"#3b3560", coral:"#ff6a4d", amber:"#ffc35c", ink:"#f6efe2", tank:"#5d6b45", tankDark:"#343d27", heli:"#56607a"
+};
+
+/* older Safari lacks roundRect */
+if (!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r){
+    r = Math.min(r, w/2, h/2);
+    this.moveTo(x+r, y); this.arcTo(x+w, y, x+w, y+h, r); this.arcTo(x+w, y+h, x, y+h, r);
+    this.arcTo(x, y+h, x, y, r); this.arcTo(x, y, x+w, y, r); this.closePath();
+  };
+}
+
+/* ---------- dom ---------- */
+const $ = id => document.getElementById(id);
+const cv = $("game"), cx = cv.getContext("2d");
+const video = $("cam");
+let W = 0, H = 0, DPR = 1, groundY = 0;
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  cx.setTransform(DPR,0,0,DPR,0,0);
+  groundY = H*0.9;
+  buildSkyline();
+  if (game) layoutCity(true);
+}
+window.addEventListener("resize", resize);
+
+/* ---------- audio (synth only, starts on tap) ---------- */
+let AC = null, master = null, noiseBuf = null;
+function initAudio(){
+  try{
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = 0.7; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+  }catch(e){ AC = null; }
+}
+function noise(dur, freq, gain, type="lowpass"){
+  if(!AC) return;
+  const s = AC.createBufferSource(); s.buffer = noiseBuf;
+  const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+  const g = AC.createGain(); const t = AC.currentTime;
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+  s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t+dur);
+}
+function tone(f0, f1, dur, gain, type="sine"){
+  if(!AC) return;
+  const o = AC.createOscillator(); o.type = type; const g = AC.createGain(); const t = AC.currentTime;
+  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,20), t+dur);
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t+dur);
+}
+const sfx = {
+  punch(){ tone(180,60,0.12,0.5,"triangle"); noise(0.08,1800,0.25); },
+  stomp(){ tone(110,28,0.55,0.9); noise(0.4,300,0.6); },
+  crash(){ noise(0.9,900,0.55); tone(70,30,0.6,0.5); },
+  boom(){ noise(0.5,600,0.5); tone(140,40,0.35,0.5); },
+  hurt(){ tone(300,90,0.25,0.35,"sawtooth"); },
+  block(){ tone(900,1400,0.08,0.25,"square"); noise(0.05,4000,0.2,"highpass"); },
+  roar(){ tone(90,60,1.3,0.5,"sawtooth"); tone(140,70,1.3,0.35,"sawtooth"); noise(1.2,500,0.5); },
+  warn(){ tone(1200,1200,0.07,0.12,"square"); }
+};
+
+/* ---------- helpers ---------- */
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const rand = (a,b) => a + Math.random()*(b-a);
+const lerp = (a,b,t) => a + (b-a)*t;
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+const mid = (a,b) => ({x:(a.x+b.x)/2, y:(a.y+b.y)/2});
+
+/* ---------- pose pipeline ---------- */
+let landmarker = null, stream = null, demo = false;
+let rawSm = null;            // smoothed normalized landmarks
+let lastVideoTime = -1, lastPoseAt = 0, poseStamp = 0;
+let calib = {cx:0, gy:0, s:1, ok:false};
+let pose = null;             // transformed screen-space points keyed by name
+const prevWr = {l:null, r:null};
+const wrSpeed = {l:0, r:0};  // in screen heights per second
+
+function srcDims(){
+  if (demo) return {vw:W, vh:H};
+  return {vw: video.videoWidth || 640, vh: video.videoHeight || 480};
+}
+function toScreen(p){
+  const {vw, vh} = srcDims();
+  const s = Math.max(W/vw, H/vh), dw = vw*s, dh = vh*s;
+  return {x:(W-dw)/2 + (1-p.x)*dw, y:(H-dh)/2 + p.y*dh, v:p.v};
+}
+function applyCalib(p){
+  if (!calib.ok) return p;
+  return {x: W/2 + (p.x - calib.cx)*calib.s, y: groundY + (p.y - calib.gy)*calib.s, v:p.v};
+}
+function ingest(lms, now){
+  if (!rawSm){ rawSm = lms.map(p => ({x:p.x, y:p.y, v:p.visibility ?? 1})); }
+  else {
+    const a = 0.6;
+    for (let i=0;i<lms.length;i++){
+      const r = rawSm[i], p = lms[i];
+      r.x += a*(p.x - r.x); r.y += a*(p.y - r.y); r.v = p.visibility ?? 1;
+    }
+  }
+  lastPoseAt = now;
+  const out = {};
+  for (const k in L){ out[k] = applyCalib(toScreen(rawSm[L[k]])); }
+  out.raw = {};
+  for (const k in L){ out.raw[k] = toScreen(rawSm[L[k]]); }
+  // wrist speeds
+  const dt = poseStamp ? (now - poseStamp)/1000 : 0;
+  for (const side of ["l","r"]){
+    const w = out[side==="l" ? "lWr" : "rWr"];
+    if (prevWr[side] && dt > 0 && dt < 0.25){
+      const sp = dist(w, prevWr[side]) / dt / H;
+      wrSpeed[side] = Math.max(sp, wrSpeed[side]*0.6);
+    }
+    prevWr[side] = {x:w.x, y:w.y};
+  }
+  poseStamp = now;
+  // derived anatomy
+  out.shMid = mid(out.lSh, out.rSh);
+  out.hipMid = mid(out.lHip, out.rHip);
+  out.sw = clamp(dist(out.lSh, out.rSh), H*0.05, H*0.3);
+  const headUp = out.sw*0.55;
+  out.head = {x: lerp(out.nose.x, out.shMid.x, 0.15), y: out.nose.y - headUp*0.15};
+  out.chest = mid(out.shMid, out.hipMid);
+  pose = out;
+}
+
+async function loadTracker(){
+  setStatus("Loading the body tracker...");
+  const vision = await import(`${MP_URL}/vision_bundle.mjs`);
+  const fileset = await vision.FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+  const make = delegate => vision.PoseLandmarker.createFromOptions(fileset, {
+    baseOptions:{ modelAssetPath: MODEL_URL, delegate },
+    runningMode:"VIDEO", numPoses:1,
+    minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5
+  });
+  try { landmarker = await make("GPU"); } catch(e){ landmarker = await make("CPU"); }
+}
+async function startCamera(){
+  setStatus("Starting the camera...");
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio:false,
+    video:{ facingMode:"user", width:{ideal:640}, height:{ideal:640} }
+  });
+  video.srcObject = stream;
+  await video.play();
+}
+function detect(now){
+  if (demo){ ingest(demoPose(now/1000), now); return; }
+  if (!landmarker || video.readyState < 2) return;
+  if (video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+  let res;
+  try { res = landmarker.detectForVideo(video, now); } catch(e){ return; }
+  if (res && res.landmarks && res.landmarks[0]) ingest(res.landmarks[0], now);
+}
+
+/* ---------- demo pose (no camera) ---------- */
+function demoPose(t){
+  const pts = Array.from({length:33}, () => ({x:0.5, y:0.5, visibility:1}));
+  const set = (i,x,y) => { pts[i] = {x, y, visibility:1}; };
+  const sway = Math.sin(t*0.6)*0.12;
+  const cxn = 0.5 + sway;                          // normalized, pre-mirror
+  const squat = Math.max(0, Math.sin(t*0.9))**3*0.08;
+  const hipY = 0.6 + squat, shY = 0.38 + squat, noseY = 0.27 + squat;
+  set(L.nose, cxn, noseY); set(L.lEar, cxn+0.03, noseY); set(L.rEar, cxn-0.03, noseY);
+  set(L.lSh, cxn+0.07, shY); set(L.rSh, cxn-0.07, shY);
+  set(L.lHip, cxn+0.05, hipY); set(L.rHip, cxn-0.05, hipY);
+  const cyc = t % 6;
+  const roar = cyc > 4.6;
+  // punches alternate
+  const pl = Math.max(0, Math.sin(t*5)), pr = Math.max(0, Math.sin(t*5+Math.PI));
+  const reach = (side, p) => {
+    const dir = side; const sx = cxn + 0.07*dir;
+    if (roar){ set(side>0?L.lEl:L.rEl, sx+0.03*dir, shY-0.1); set(side>0?L.lWr:L.rWr, sx+0.02*dir, shY-0.2); return; }
+    set(side>0?L.lEl:L.rEl, sx+0.06*dir + p*0.04*dir, shY+0.1 - p*0.06);
+    set(side>0?L.lWr:L.rWr, sx+0.04*dir + p*0.2*dir, shY+0.06 - p*0.02 + squat*0.5);
+  };
+  reach(1, pl); reach(-1, pr);
+  // knee raise on a slow cycle
+  const kn = Math.max(0, Math.sin(t*1.7))**4;
+  const legs = (side, lift) => {
+    const hx = cxn + 0.05*side;
+    set(side>0?L.lKn:L.rKn, hx+0.01*side, 0.75 + squat*0.4 - lift*0.13);
+    set(side>0?L.lAn:L.rAn, hx+0.015*side, 0.9 - lift*0.12);
+    set(side>0?L.lFt:L.rFt, hx+0.04*side, 0.92 - lift*0.12);
+  };
+  legs(1, kn * (Math.floor(t/1.85)%2 ? 1:0)); legs(-1, kn * (Math.floor(t/1.85)%2 ? 0:1));
+  return pts;
+}
+
+/* ---------- calibration ---------- */
+let calibHold = 0, calibSamples = [];
+function bodyVisible(){
+  if (!pose || performance.now() - lastPoseAt > 500) return false;
+  const r = pose.raw;
+  const need = ["nose","lSh","rSh","lHip","rHip","lAn","rAn"];
+  if (!need.every(k => r[k].v > 0.55)) return false;
+  return r.lAn.y < H*0.99 && r.rAn.y < H*0.99 && r.nose.y > 0;
+}
+function finishCalib(){
+  const n = calibSamples.length || 1;
+  const a = calibSamples.reduce((o,s) => ({cx:o.cx+s.cx, gy:o.gy+s.gy, h:o.h+s.h}), {cx:0,gy:0,h:0});
+  const cxv = a.cx/n, gy = a.gy/n, bh = Math.max(a.h/n, 40);
+  calib = {cx:cxv, gy, s: clamp((H*0.6)/bh, 0.5, 3.2), ok:true};
+  rawSm = null; prevWr.l = prevWr.r = null; poseStamp = 0;
+  for (const f of feet) { f.base = null; f.up = false; }
+}
+function updateCalib(dt){
+  const title = $("calibTitle"), msg = $("calibMsg");
+  if (!bodyVisible()){
+    calibHold = 0; calibSamples = [];
+    title.textContent = "Step into frame";
+    msg.textContent = pose ? "I can see part of you. Back up until your head and both feet are in the picture." : "Stand in front of the camera, 6 to 8 feet back.";
+    return false;
+  }
+  calibHold += dt;
+  const r = pose.raw;
+  const g = Math.max(r.lAn.y, r.rAn.y);
+  calibSamples.push({cx:(r.lAn.x + r.rAn.x)/2, gy:g, h:g - r.nose.y});
+  if (calibSamples.length > 40) calibSamples.shift();
+  const left = Math.ceil(2.5 - calibHold);
+  title.textContent = left > 0 ? `Hold still... ${left}` : "Go!";
+  msg.textContent = "Stand tall in your normal stance.";
+  if (calibHold >= 2.5){ finishCalib(); return true; }
+  return false;
+}
+
+/* ---------- city ---------- */
+let skyline = [], stars = [];
+function buildSkyline(){
+  skyline = []; let x = 0;
+  while (x < W){ const w = rand(30,70); skyline.push({x, w, h: rand(H*0.12, H*0.32)}); x += w - 4; }
+  stars = Array.from({length: 70}, () => ({x:rand(0,W), y:rand(0,H*0.5), r:rand(0.5,1.6), tw:rand(0,6)}));
+}
+function makeBuilding(slot, slotW, rising){
+  const w = slotW*rand(0.68,0.9);
+  const h = H*rand(0.16, 0.5);
+  const cols = Math.max(2, Math.round(w/16)), rows = Math.max(3, Math.round(h/20));
+  const lit = Array.from({length: cols*rows}, () => Math.random() < 0.62);
+  const maxhp = Math.round(40 + (h/H)*170);
+  return {slot, x: slot*slotW + (slotW-w)/2, w, h, cur: rising ? 0 : h, hp:maxhp, maxhp, cols, rows, lit,
+          color: COL.bldg[slot % COL.bldg.length], state: rising ? "rising" : "up", t:0, shake:0,
+          cracks:[], hitCd:{l:0, r:0}, roof: Math.floor(rand(0,3))};
+}
+function layoutCity(keep){
+  const slots = clamp(Math.round(W/68), 5, 10), slotW = W/slots;
+  game.city = Array.from({length:slots}, (_,i) => makeBuilding(i, slotW, false));
+  game.slotW = slotW;
+}
+function damageBuilding(b, dmg, x, y){
+  if (b.state !== "up") return false;
+  b.hp -= dmg; b.shake = 0.25;
+  if (b.cracks.length < 7) b.cracks.push({x: clamp(x - b.x, 4, b.w-4), y: clamp(groundY - y, 4, b.h-4), a: rand(0, Math.PI*2)});
+  // knock out a few windows
+  for (let k=0;k<3;k++){ b.lit[Math.floor(Math.random()*b.lit.length)] = false; }
+  for (let k=0;k<6;k++) debris(x, y, b.color);
+  if (b.hp <= 0){
+    b.state = "falling"; b.t = 0; sfx.crash(); game.shake = Math.max(game.shake, 14);
+    const pts = Math.round(80 + (b.h/H)*300);
+    addScore(pts, b.x + b.w/2, groundY - b.h*0.6);
+    game.stats.buildings++; addRoar(9);
+    return true;
+  }
+  return false;
+}
+function updateCity(dt){
+  for (const b of game.city){
+    b.shake = Math.max(0, b.shake - dt);
+    b.hitCd.l = Math.max(0, b.hitCd.l - dt); b.hitCd.r = Math.max(0, b.hitCd.r - dt);
+    if (b.state === "falling"){
+      b.t += dt; b.cur = b.h * Math.max(0, 1 - b.t/0.9);
+      if (Math.random() < 0.6) dust(b.x + rand(0,b.w), groundY - rand(0, 20));
+      if (b.t >= 0.9){ b.state = "gone"; b.t = 0; b.respawn = rand(4,7); }
+    } else if (b.state === "gone"){
+      b.t += dt;
+      if (b.t >= b.respawn){ Object.assign(b, makeBuilding(b.slot, game.slotW, true)); }
+    } else if (b.state === "rising"){
+      b.t += dt; b.cur = b.h * Math.min(1, b.t/1.4);
+      if (b.t >= 1.4){ b.state = "up"; b.cur = b.h; }
+    }
+  }
+}
+
+/* ---------- effects ---------- */
+function debris(x, y, color){
+  if (game.parts.length > 260) return;
+  game.parts.push({x, y, vx:rand(-260,260), vy:rand(-420,-80), s:rand(3,8), life:rand(0.6,1.2), color, kind:"chunk", rot:rand(0,6)});
+}
+function dust(x, y){
+  if (game.parts.length > 260) return;
+  game.parts.push({x, y, vx:rand(-40,40), vy:rand(-60,-10), s:rand(10,26), life:rand(0.6,1.1), color:"rgba(200,190,215,0.35)", kind:"dust"});
+}
+function spark(x, y, color){
+  for (let i=0;i<10;i++) game.parts.push({x, y, vx:rand(-300,300), vy:rand(-300,300), s:rand(2,4), life:rand(0.2,0.45), color, kind:"spark"});
+}
+function popText(text, x, y, color){ game.pops.push({text, x, y, t:0, color: color || COL.ink}); }
+function updateParts(dt){
+  for (const p of game.parts){
+    p.life -= dt; p.x += p.vx*dt; p.y += p.vy*dt;
+    if (p.kind === "chunk"){ p.vy += 900*dt; p.rot += dt*6; if (p.y > groundY){ p.y = groundY; p.vy *= -0.3; p.vx *= 0.6; } }
+    else if (p.kind === "dust"){ p.s += dt*20; }
+  }
+  game.parts = game.parts.filter(p => p.life > 0);
+  for (const t of game.pops){ t.t += dt; t.y -= dt*50; }
+  game.pops = game.pops.filter(t => t.t < 1.1);
+  game.rings = game.rings.filter(r => (r.t += dt) < 0.5);
+}
+
+/* ---------- scoring ---------- */
+function addScore(pts, x, y){
+  game.combo++; game.comboT = 2.2;
+  const mult = 1 + Math.min(4, Math.floor(game.combo/5))*0.5;
+  const v = Math.round(pts*mult);
+  game.score += v; popText(`+${v}`, x, y, COL.amber);
+}
+function addRoar(n){ game.roar = Math.min(100, game.roar + n); }
+
+/* ---------- body actions ---------- */
+const feet = [{side:"l", base:null, up:false, peak:0, t:0}, {side:"r", base:null, up:false, peak:0, t:0}];
+let guardOn = false, roarHold = 0;
+
+function fistR(){ return clamp(pose.sw*0.32, 12, 46); }
+function handPunches(dt){
+  const R = fistR();
+  for (const side of ["l","r"]){
+    const w = pose[side === "l" ? "lWr" : "rWr"];
+    if (w.v < 0.4) continue;
+    const sp = wrSpeed[side];
+    const fast = sp > 0.6;
+    if (!fast) continue;
+    // buildings
+    for (const b of game.city){
+      if (b.state !== "up" || b.hitCd[side] > 0) continue;
+      const top = groundY - b.cur;
+      if (w.x + R > b.x && w.x - R < b.x + b.w && w.y + R > top && w.y - R < groundY){
+        const dmg = 16 + Math.min(sp, 3)*10;
+        b.hitCd[side] = 0.32; game.stats.punches++; sfx.punch(); addRoar(1);
+        game.shake = Math.max(game.shake, 4);
+        damageBuilding(b, dmg, w.x, w.y);
+        if (b.state === "up") addScore(10, w.x, w.y - 20);
+      }
+    }
+    // tanks
+    for (const tk of game.tanks){
+      if (tk.dead) continue;
+      if (Math.abs(w.x - tk.x) < tk.w/2 + R && Math.abs(w.y - (groundY - tk.h/2)) < tk.h/2 + R){ killTank(tk, "Smashed"); game.stats.punches++; }
+    }
+    // helicopters
+    for (const hc of game.helis){
+      if (hc.dead) continue;
+      if (Math.hypot(w.x - hc.x, w.y - hc.y) < hc.r + R){ killHeli(hc); game.stats.punches++; }
+    }
+    // missiles in the air
+    for (const pr of game.shots){
+      if (pr.done) continue;
+      if (Math.hypot(w.x - pr.x, w.y - pr.y) < R + 14){
+        pr.done = true; spark(pr.x, pr.y, COL.amber); sfx.block(); popText("Swatted", pr.x, pr.y, COL.ink);
+        addScore(40, pr.x, pr.y - 24); game.stats.blocks++;
+      }
+    }
+  }
+}
+function footStomps(dt){
+  const lift = H*0.055, land = H*0.022;
+  for (const f of feet){
+    const a = pose[f.side === "l" ? "lAn" : "rAn"];
+    if (a.v < 0.4) continue;
+    if (f.base === null) f.base = a.y;
+    const up = f.base - a.y;
+    if (!f.up){
+      // follow the floor: fast when the foot sits lower than the baseline, slow when it rises
+      const k = a.y > f.base ? dt*4 : dt*0.4;
+      f.base += (a.y - f.base)*Math.min(1, k);
+      if (up > lift){ f.up = true; f.peak = up; f.t = 0; }
+    } else {
+      f.t += dt; f.peak = Math.max(f.peak, up);
+      if (up < land){
+        f.up = false;
+        if (f.t < 2) doStomp(a.x, f.peak);
+      }
+      if (f.t > 3) f.up = false;
+    }
+  }
+}
+function doStomp(x, peak){
+  game.stats.stomps++; sfx.stomp();
+  const power = clamp(peak/(H*0.1), 0.8, 1.8);
+  const radius = W*0.2*power;
+  game.shake = Math.max(game.shake, 10*power);
+  game.rings.push({x, y:groundY, r:radius, t:0});
+  for (let i=0;i<8;i++) dust(x + rand(-30,30), groundY - 4);
+  for (const b of game.city){
+    const bx = clamp(x, b.x, b.x + b.w);
+    const d = Math.abs(bx - x);
+    if (d < radius) damageBuilding(b, (26 + 20*power)*(1 - d/radius*0.6), bx, groundY - 10);
+  }
+  for (const tk of game.tanks) if (!tk.dead && Math.abs(tk.x - x) < radius) killTank(tk, "Crushed");
+  addRoar(2);
+}
+function checkGuard(){
+  const R = pose.sw*1.05;
+  const l = pose.lWr, r = pose.rWr;
+  guardOn = l.v > 0.4 && r.v > 0.4 && dist(l, pose.head) < R && dist(r, pose.head) < R && l.y < pose.shMid.y + pose.sw*0.3 && r.y < pose.shMid.y + pose.sw*0.3;
+}
+function checkRoar(dt){
+  const up = pose.lWr.v > 0.4 && pose.rWr.v > 0.4 && pose.lWr.y < pose.nose.y - pose.sw*0.35 && pose.rWr.y < pose.nose.y - pose.sw*0.35;
+  if (up && game.roar >= 100){ roarHold += dt; if (roarHold > 0.6){ doRoar(); roarHold = 0; } }
+  else roarHold = 0;
+}
+function doRoar(){
+  game.roar = 0; game.roaring = 1.3; game.stats.roars++; sfx.roar();
+  game.shake = 22;
+  popText("Roar!", pose.head.x, pose.head.y - pose.sw, COL.amber);
+  for (const b of game.city) if (b.state === "up") damageBuilding(b, 70, b.x + b.w/2, groundY - b.cur*0.5);
+  for (const tk of game.tanks) if (!tk.dead) killTank(tk, "Blown away");
+  for (const hc of game.helis) if (!hc.dead) killHeli(hc);
+  for (const pr of game.shots) pr.done = true;
+}
+
+/* ---------- enemies ---------- */
+function spawnTank(){
+  const fromLeft = pose ? pose.hipMid.x > W/2 : Math.random() < 0.5;
+  const w = clamp(H*0.11, 50, 110), h = w*0.5;
+  game.tanks.push({x: fromLeft ? -w : W + w, dir: fromLeft ? 1 : -1, w, h, fire: rand(2,3), dead:false, deadT:0, aim:0});
+  if (!game.seen.tank){ game.seen.tank = true; tip("Tank! Knee up and stomp near it."); }
+}
+function spawnHeli(){
+  const fromLeft = Math.random() < 0.5;
+  const r = clamp(H*0.045, 22, 46);
+  game.helis.push({x: fromLeft ? -r*3 : W + r*3, y: H*rand(0.2, 0.32), r, dir: fromLeft ? 1 : -1, fire: rand(3,4), warn:false, dead:false, deadT:0, bob: rand(0,6)});
+  if (!game.seen.heli){ game.seen.heli = true; tip("Helicopter! Reach up and punch it."); }
+}
+function killTank(tk, label){
+  tk.dead = true; tk.deadT = 0; sfx.boom(); game.stats.tanks++;
+  spark(tk.x, groundY - tk.h/2, COL.coral); for (let i=0;i<8;i++) debris(tk.x, groundY - tk.h/2, COL.tank);
+  addScore(150, tk.x, groundY - tk.h - 10); addRoar(10); popText(label, tk.x, groundY - tk.h - 40, COL.ink);
+}
+function killHeli(hc){
+  hc.dead = true; hc.deadT = 0; sfx.boom(); game.stats.helis++;
+  spark(hc.x, hc.y, COL.coral); for (let i=0;i<10;i++) debris(hc.x, hc.y, COL.heli);
+  addScore(250, hc.x, hc.y - 30); addRoar(12);
+}
+function fire(from, targetKind, kind){
+  const tgt = targetKind === "head" ? pose.head : pose.chest;
+  game.shots.push({x0:from.x, y0:from.y, x1:tgt.x, y1:tgt.y, x:from.x, y:from.y, t:0, dur: kind === "shell" ? 1.25 : 1.05, kind, target: targetKind, done:false});
+}
+function updateEnemies(dt){
+  const d = game.elapsed/ROUND_SECONDS;
+  // spawns
+  game.tankT -= dt; game.heliT -= dt;
+  const aliveT = game.tanks.filter(t => !t.dead).length, aliveH = game.helis.filter(h => !h.dead).length;
+  if (game.tankT <= 0){
+    if (aliveT < (d > 0.4 ? 2 : 1)) spawnTank();
+    game.tankT = lerp(9, 5, d);
+  }
+  if (game.elapsed > 35 && game.heliT <= 0){
+    if (aliveH < (d > 0.6 ? 2 : 1)) spawnHeli();
+    game.heliT = lerp(14, 8, d);
+  }
+  const mx = pose ? pose.hipMid.x : W/2;
+  for (const tk of game.tanks){
+    if (tk.dead){ tk.deadT += dt; continue; }
+    const stopAt = mx - tk.dir*W*0.3;
+    if ((tk.dir > 0 && tk.x < stopAt) || (tk.dir < 0 && tk.x > stopAt)) tk.x += tk.dir*W*0.12*dt;
+    tk.fire -= dt;
+    if (tk.fire <= 0 && pose && tk.x > 0 && tk.x < W){ fire({x: tk.x + tk.dir*tk.w*0.5, y: groundY - tk.h}, "chest", "shell"); tk.fire = lerp(3.4, 2.2, d); }
+  }
+  for (const hc of game.helis){
+    if (hc.dead){ hc.deadT += dt; hc.y += dt*260; hc.x += hc.dir*dt*60; continue; }
+    hc.bob += dt*2;
+    const tx = clamp(mx + hc.dir*-W*0.28, hc.r*2, W - hc.r*2);
+    hc.x += (tx - hc.x)*Math.min(1, dt*0.8);
+    hc.y += Math.sin(hc.bob)*dt*14;
+    hc.fire -= dt;
+    const wasWarn = hc.warn; hc.warn = hc.fire < 0.9;
+    if (hc.warn && !wasWarn) sfx.warn();
+    if (hc.fire <= 0 && pose){ fire({x: hc.x, y: hc.y + hc.r*0.4}, "head", "missile"); hc.fire = lerp(4.2, 2.8, d); }
+  }
+  game.tanks = game.tanks.filter(t => !t.dead || t.deadT < 0.1);
+  game.helis = game.helis.filter(h => !h.dead || (h.deadT < 1.2 && h.y < groundY));
+  // projectiles
+  for (const p of game.shots){
+    if (p.done) continue;
+    p.t += dt; const u = Math.min(1, p.t/p.dur);
+    p.x = lerp(p.x0, p.x1, u);
+    p.y = lerp(p.y0, p.y1, u) - (p.kind === "shell" ? Math.sin(u*Math.PI)*H*0.18 : 0);
+    if (u >= 1){
+      p.done = true;
+      if (!pose) continue;
+      const now = p.target === "head" ? pose.head : pose.chest;
+      const near = Math.hypot(now.x - p.x1, now.y - p.y1) < pose.sw*0.9;
+      if (guardOn){ spark(p.x, p.y, COL.amber); sfx.block(); popText("Blocked", p.x, p.y - 20); game.stats.blocks++; addRoar(3); }
+      else if (near){
+        const dmg = p.kind === "shell" ? 7 : 10;
+        if (!demo) game.hp = Math.max(0, game.hp - dmg);
+        game.hurt = 0.35; sfx.hurt(); spark(p.x, p.y, COL.coral);
+        game.combo = 0; popText(`-${dmg}`, p.x, p.y - 20, COL.coral);
+      } else { popText("Dodged", p.x, p.y - 20); game.stats.dodges++; noise(0.3,700,0.3); }
+    }
+  }
+  game.shots = game.shots.filter(p => !p.done);
+}
+
+/* ---------- game state ---------- */
+let game = null, phase = "menu", lastFrame = 0, tipT = 0;
+function newGame(){
+  game = {score:0, hp:100, roar:0, combo:0, comboT:0, elapsed:0, shake:0, hurt:0, roaring:0,
+          city:[], slotW:0, parts:[], pops:[], rings:[], tanks:[], helis:[], shots:[],
+          tankT:12, heliT:0, seen:{}, stats:{punches:0, stomps:0, buildings:0, tanks:0, helis:0, blocks:0, dodges:0, roars:0}};
+  layoutCity();
+}
+function tip(text){ const b = $("banner"); b.textContent = text; b.hidden = false; tipT = 3; }
+const tips = [
+  [6, "Squat down to punch the short buildings."],
+  [20, "Knee up, then slam it down. That's a stomp."],
+  [50, "Fists up by your face to block. Or slip out of the way."],
+  [70, "Full roar bar? Both arms overhead and hold."]
+];
+let tipIdx = 0;
+
+function update(dt){
+  if (phase !== "play") return;
+  game.elapsed += dt;
+  if (tipIdx < tips.length && game.elapsed > tips[tipIdx][0]){ tip(tips[tipIdx][1]); tipIdx++; }
+  if (tipT > 0){ tipT -= dt; if (tipT <= 0) $("banner").hidden = true; }
+  const lost = performance.now() - lastPoseAt > 1200;
+  if (lost && !demo){ $("banner").textContent = "I lost you. Step back into frame."; $("banner").hidden = false; tipT = 0.5; }
+  if (pose && !lost){
+    checkGuard(); handPunches(dt); footStomps(dt); checkRoar(dt);
+  }
+  wrSpeed.l *= Math.pow(0.02, dt); wrSpeed.r *= Math.pow(0.02, dt);
+  updateCity(dt); updateEnemies(dt); updateParts(dt);
+  game.shake = Math.max(0, game.shake - dt*40);
+  game.hurt = Math.max(0, game.hurt - dt);
+  game.roaring = Math.max(0, game.roaring - dt);
+  game.comboT -= dt; if (game.comboT <= 0) game.combo = 0;
+  updateHud();
+  if (game.hp <= 0) endGame(false);
+  else if (game.elapsed >= ROUND_SECONDS) endGame(true);
+}
+function updateHud(){
+  const left = Math.max(0, ROUND_SECONDS - game.elapsed);
+  $("clock").textContent = `${Math.floor(left/60)}:${String(Math.floor(left%60)).padStart(2,"0")}`;
+  $("score").textContent = game.score.toLocaleString();
+  const mult = 1 + Math.min(4, Math.floor(game.combo/5))*0.5;
+  $("comboLab").textContent = game.combo >= 5 ? `Combo x${mult}` : "Score";
+  $("hpBar").style.width = `${game.hp}%`;
+  $("hpBar").style.background = game.hp < 30 ? COL.coral : "";
+  $("roarBar").style.width = `${game.roar}%`;
+  $("roarWrap").classList.toggle("ready", game.roar >= 100);
+}
+
+/* ---------- drawing ---------- */
+function drawSky(t){
+  const g = cx.createLinearGradient(0,0,0,groundY);
+  g.addColorStop(0, "#12142e"); g.addColorStop(1, "#2c2252");
+  cx.fillStyle = g; cx.fillRect(0,0,W,H);
+  for (const s of stars){ cx.globalAlpha = 0.4 + 0.4*Math.sin(t*1.5 + s.tw); cx.fillStyle = "#f6efe2"; cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 7); cx.fill(); }
+  cx.globalAlpha = 1;
+  cx.fillStyle = "#f3e3c0"; cx.beginPath(); cx.arc(W*0.8, H*0.14, Math.min(W,H)*0.06, 0, 7); cx.fill();
+  cx.fillStyle = "#1d1a3d";
+  for (const b of skyline) cx.fillRect(b.x, groundY - b.h, b.w, b.h);
+  cx.fillStyle = COL.ground; cx.fillRect(0, groundY, W, H - groundY);
+  cx.strokeStyle = COL.line; cx.lineWidth = 3; cx.setLineDash([22,18]);
+  cx.beginPath(); cx.moveTo(0, groundY + (H-groundY)*0.5); cx.lineTo(W, groundY + (H-groundY)*0.5); cx.stroke(); cx.setLineDash([]);
+}
+function drawBuilding(b){
+  if (b.state === "gone"){
+    cx.fillStyle = "#2a2440"; cx.fillRect(b.x, groundY - 8, b.w, 8);
+    return;
+  }
+  const sx = b.shake > 0 ? rand(-4,4) : 0;
+  const top = groundY - b.cur, x = b.x + sx;
+  cx.fillStyle = b.state === "rising" ? "#3c3a52" : b.color;
+  cx.fillRect(x, top, b.w, b.cur);
+  // roof detail
+  if (b.state === "up"){
+    cx.fillStyle = "#22253f";
+    if (b.roof === 1){ cx.fillRect(x + b.w*0.6, top - 10, b.w*0.18, 10); }
+    if (b.roof === 2){ cx.fillRect(x + b.w*0.48, top - 22, 3, 22); cx.fillStyle = COL.coral; cx.fillRect(x + b.w*0.48 - 1, top - 24, 5, 4); }
+  }
+  // windows, drawn from the ground up so sinking hides the top rows
+  const pad = 6, cw2 = (b.w - pad*2)/b.cols, rh = (b.h - pad*2)/b.rows;
+  for (let r=0;r<b.rows;r++){
+    const wy = groundY - pad - (r+1)*rh;
+    if (wy < top + 3) break;
+    for (let c=0;c<b.cols;c++){
+      const on = b.state === "up" && b.lit[r*b.cols + c];
+      cx.fillStyle = on ? COL.win : COL.winOff;
+      cx.fillRect(x + pad + c*cw2 + cw2*0.2, wy + rh*0.2, cw2*0.6, rh*0.55);
+    }
+  }
+  if (b.state === "rising"){
+    cx.strokeStyle = COL.amber; cx.lineWidth = 2; cx.globalAlpha = 0.6;
+    for (let y = groundY; y > top; y -= 18){ cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + b.w, y - 18); cx.stroke(); }
+    cx.globalAlpha = 1;
+  }
+  // cracks
+  cx.strokeStyle = "#0d0b1a"; cx.lineWidth = 2;
+  for (const k of b.cracks){
+    const ky = groundY - k.y; if (ky < top) continue;
+    cx.beginPath(); cx.moveTo(x + k.x, ky);
+    let px = x + k.x, py = ky;
+    for (let i=0;i<4;i++){ px += Math.cos(k.a + i)*10; py += Math.sin(k.a + i*1.3)*10; cx.lineTo(px, py); }
+    cx.stroke();
+  }
+}
+function limb(a, b, w, color){
+  cx.strokeStyle = color; cx.lineWidth = w; cx.lineCap = "round";
+  cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x, b.y); cx.stroke();
+}
+function drawMonster(t){
+  const p = pose; if (!p) return;
+  const sw = p.sw, legW = sw*0.5, armW = sw*0.36;
+  const hurt = game && game.hurt > 0;
+  const body = hurt ? "#a8574a" : COL.body;
+  const out = COL.dark;
+  // tail behind the body
+  const tailSide = p.hipMid.x < W/2 ? 1 : -1;
+  cx.fillStyle = body; cx.strokeStyle = out; cx.lineWidth = 4;
+  cx.beginPath();
+  cx.moveTo(p.hipMid.x - sw*0.25, p.hipMid.y);
+  cx.quadraticCurveTo(p.hipMid.x + tailSide*sw*1.3, p.hipMid.y + sw*0.3, p.hipMid.x + tailSide*sw*2.1 + Math.sin(t*2)*sw*0.2, groundY - sw*0.05);
+  cx.quadraticCurveTo(p.hipMid.x + tailSide*sw*1.0, p.hipMid.y + sw*0.75, p.hipMid.x + sw*0.25, p.hipMid.y + sw*0.25);
+  cx.closePath(); cx.fill(); cx.stroke();
+  // back spikes peeking out behind shoulders
+  cx.fillStyle = COL.spike;
+  for (let i=-2;i<=2;i++){
+    const bx = p.shMid.x + i*sw*0.28, by = p.shMid.y + Math.abs(i)*sw*0.12;
+    cx.beginPath(); cx.moveTo(bx - sw*0.13, by); cx.lineTo(bx, by - sw*(0.55 - Math.abs(i)*0.12)); cx.lineTo(bx + sw*0.13, by); cx.closePath(); cx.fill();
+  }
+  // legs
+  for (const [h,k,a] of [[p.lHip,p.lKn,p.lAn],[p.rHip,p.rKn,p.rAn]]){
+    limb(h, k, legW + 8, out); limb(k, a, legW*0.9 + 8, out);
+    limb(h, k, legW, body); limb(k, a, legW*0.9, body);
+    // foot
+    const fw = sw*0.55, fh = sw*0.24;
+    cx.fillStyle = out; cx.beginPath(); cx.roundRect(a.x - fw/2 - 4, a.y - fh*0.3 - 4, fw + 8, fh + 8, 8); cx.fill();
+    cx.fillStyle = body; cx.beginPath(); cx.roundRect(a.x - fw/2, a.y - fh*0.3, fw, fh, 6); cx.fill();
+    cx.fillStyle = COL.ink;
+    for (let c=0;c<3;c++){ const clx = a.x - fw*0.35 + c*fw*0.35; cx.beginPath(); cx.moveTo(clx-4, a.y + fh*0.7); cx.lineTo(clx, a.y + fh*0.7 + 7); cx.lineTo(clx+4, a.y + fh*0.7); cx.fill(); }
+  }
+  // torso
+  const ex = sw*0.18;
+  const ls = {x:p.lSh.x + Math.sign(p.lSh.x - p.rSh.x)*ex, y:p.lSh.y}, rs = {x:p.rSh.x + Math.sign(p.rSh.x - p.lSh.x)*ex, y:p.rSh.y};
+  const lh = {x:p.lHip.x + Math.sign(p.lHip.x - p.rHip.x)*ex*1.4, y:p.lHip.y + sw*0.1}, rh = {x:p.rHip.x + Math.sign(p.rHip.x - p.lHip.x)*ex*1.4, y:p.rHip.y + sw*0.1};
+  cx.fillStyle = body; cx.strokeStyle = out; cx.lineWidth = 5; cx.lineJoin = "round";
+  cx.beginPath(); cx.moveTo(ls.x, ls.y); cx.lineTo(rs.x, rs.y); cx.lineTo(rh.x, rh.y); cx.lineTo(lh.x, lh.y); cx.closePath(); cx.fill(); cx.stroke();
+  // belly plates
+  const bc = mid(p.shMid, p.hipMid);
+  cx.fillStyle = COL.belly;
+  cx.beginPath(); cx.ellipse(bc.x, bc.y + sw*0.08, sw*0.32, Math.max(10, dist(p.shMid, p.hipMid)*0.42), 0, 0, 7); cx.fill();
+  cx.strokeStyle = "rgba(18,58,49,.45)"; cx.lineWidth = 2;
+  for (let i=-1;i<=1;i++){ cx.beginPath(); cx.moveTo(bc.x - sw*0.25, bc.y + i*sw*0.18); cx.lineTo(bc.x + sw*0.25, bc.y + i*sw*0.18); cx.stroke(); }
+  // head
+  const hw = sw*0.85, hh = sw*0.72, hx = p.head.x, hy = p.head.y;
+  const roaring = game && game.roaring > 0;
+  cx.fillStyle = out; cx.beginPath(); cx.roundRect(hx - hw/2 - 5, hy - hh/2 - 5, hw + 10, hh + 10 + (roaring ? hh*0.35 : 0), 14); cx.fill();
+  cx.fillStyle = body; cx.beginPath(); cx.roundRect(hx - hw/2, hy - hh/2, hw, hh + (roaring ? hh*0.35 : 0), 11); cx.fill();
+  // brow and eyes
+  cx.fillStyle = out; cx.fillRect(hx - hw*0.42, hy - hh*0.2, hw*0.84, hh*0.1);
+  cx.fillStyle = COL.eye;
+  cx.beginPath(); cx.arc(hx - hw*0.2, hy, hw*0.1, 0, 7); cx.arc(hx + hw*0.2, hy, hw*0.1, 0, 7); cx.fill();
+  cx.fillStyle = out; cx.beginPath(); cx.arc(hx - hw*0.2, hy + 1, hw*0.04, 0, 7); cx.arc(hx + hw*0.2, hy + 1, hw*0.04, 0, 7); cx.fill();
+  // mouth
+  const my = hy + hh*0.3;
+  if (roaring){
+    cx.fillStyle = "#3a0f16"; cx.beginPath(); cx.roundRect(hx - hw*0.32, my - 2, hw*0.64, hh*0.45, 6); cx.fill();
+    cx.globalAlpha = Math.min(1, game.roaring);
+    const grd = cx.createRadialGradient(hx, my + hh*0.2, 4, hx, my + hh*0.2, W*0.6);
+    grd.addColorStop(0, "rgba(255,195,92,.55)"); grd.addColorStop(1, "rgba(255,195,92,0)");
+    cx.fillStyle = grd; cx.beginPath(); cx.arc(hx, my + hh*0.2, W*0.6, 0, 7); cx.fill(); cx.globalAlpha = 1;
+  }
+  cx.fillStyle = COL.ink;
+  for (let i=0;i<5;i++){ const tx = hx - hw*0.3 + i*hw*0.15; cx.beginPath(); cx.moveTo(tx, my); cx.lineTo(tx + hw*0.06, my + hh*0.13); cx.lineTo(tx + hw*0.12, my); cx.fill(); }
+  // arms on top of torso
+  const R = fistR();
+  for (const [s, e, w, side] of [[p.lSh,p.lEl,p.lWr,"l"],[p.rSh,p.rEl,p.rWr,"r"]]){
+    limb(s, e, armW + 8, out); limb(e, w, armW*0.9 + 8, out);
+    limb(s, e, armW, body); limb(e, w, armW*0.9, body);
+    const fast = wrSpeed[side] > 0.6;
+    cx.fillStyle = out; cx.beginPath(); cx.arc(w.x, w.y, R + 4, 0, 7); cx.fill();
+    cx.fillStyle = fast ? COL.bodyLit : body; cx.beginPath(); cx.arc(w.x, w.y, R, 0, 7); cx.fill();
+    cx.strokeStyle = out; cx.lineWidth = 2;
+    for (let k=-1;k<=1;k++){ cx.beginPath(); cx.moveTo(w.x - R*0.5, w.y + k*R*0.35); cx.lineTo(w.x + R*0.5, w.y + k*R*0.35); cx.stroke(); }
+    if (fast){ cx.strokeStyle = "rgba(246,239,226,.5)"; cx.lineWidth = 3; cx.beginPath(); cx.arc(w.x, w.y, R + 9, 0, 7); cx.stroke(); }
+  }
+  if (guardOn && phase === "play"){
+    cx.strokeStyle = "rgba(255,195,92,.85)"; cx.lineWidth = 5;
+    cx.beginPath(); cx.arc(p.head.x, p.head.y + hh*0.1, sw*1.1, Math.PI*1.05, Math.PI*1.95); cx.stroke();
+  }
+}
+function drawTank(tk){
+  const y = groundY;
+  cx.save(); cx.translate(tk.x, y);
+  if (tk.dead){ cx.restore(); return; }
+  cx.fillStyle = COL.tankDark; cx.beginPath(); cx.roundRect(-tk.w/2, -tk.h*0.45, tk.w, tk.h*0.45, tk.h*0.2); cx.fill();
+  cx.fillStyle = COL.tank; cx.fillRect(-tk.w*0.42, -tk.h*0.8, tk.w*0.84, tk.h*0.4);
+  cx.beginPath(); cx.roundRect(-tk.w*0.2, -tk.h*1.1, tk.w*0.4, tk.h*0.35, 4); cx.fill();
+  // barrel aims at the monster's chest
+  let ang = -Math.PI/2;
+  if (pose) ang = Math.atan2(pose.chest.y - (y - tk.h), pose.chest.x - tk.x);
+  cx.save(); cx.translate(0, -tk.h*0.95); cx.rotate(ang); cx.fillStyle = COL.tankDark; cx.fillRect(0, -3, tk.w*0.55, 6); cx.restore();
+  if (tk.fire < 0.5){ cx.fillStyle = COL.coral; cx.beginPath(); cx.arc(0, -tk.h*1.2, 4, 0, 7); cx.fill(); }
+  cx.restore();
+}
+function drawHeli(hc, t){
+  cx.save(); cx.translate(hc.x, hc.y);
+  if (hc.dead) cx.rotate(hc.deadT*6);
+  const r = hc.r;
+  cx.fillStyle = COL.heli;
+  cx.beginPath(); cx.ellipse(0, 0, r, r*0.55, 0, 0, 7); cx.fill();
+  cx.fillRect(-hc.dir*r*0.6 - (hc.dir > 0 ? r*1.4 : 0), -r*0.12, r*1.4, r*0.22);
+  cx.fillStyle = "#a9d6e5"; cx.beginPath(); cx.ellipse(hc.dir*r*0.45, -r*0.05, r*0.35, r*0.3, 0, 0, 7); cx.fill();
+  cx.strokeStyle = "#cfd3e0"; cx.lineWidth = 3;
+  const sp = Math.sin(t*40)*r*1.4;
+  cx.beginPath(); cx.moveTo(-sp, -r*0.7); cx.lineTo(sp, -r*0.7); cx.stroke();
+  if (hc.warn && !hc.dead && Math.floor(t*10)%2){ cx.fillStyle = COL.coral; cx.beginPath(); cx.arc(0, r*0.55, 6, 0, 7); cx.fill(); }
+  cx.restore();
+}
+function drawShots(){
+  for (const p of game.shots){
+    if (p.kind === "missile"){
+      const a = Math.atan2(p.y1 - p.y0, p.x1 - p.x0);
+      cx.save(); cx.translate(p.x, p.y); cx.rotate(a);
+      cx.fillStyle = "rgba(255,195,92,.5)"; cx.fillRect(-34, -3, 22, 6);
+      cx.fillStyle = COL.ink; cx.fillRect(-12, -4, 22, 8); cx.fillStyle = COL.coral; cx.fillRect(10, -4, 6, 8);
+      cx.restore();
+    } else {
+      cx.fillStyle = COL.coral; cx.beginPath(); cx.arc(p.x, p.y, 7, 0, 7); cx.fill();
+      cx.fillStyle = "rgba(255,106,77,.3)"; cx.beginPath(); cx.arc(p.x, p.y, 13, 0, 7); cx.fill();
+    }
+  }
+}
+function drawFx(){
+  for (const r of game.rings){
+    const u = r.t/0.5;
+    cx.strokeStyle = `rgba(255,195,92,${1-u})`; cx.lineWidth = 6*(1-u) + 1;
+    cx.beginPath(); cx.ellipse(r.x, r.y, r.r*u, r.r*u*0.18, 0, 0, 7); cx.stroke();
+  }
+  for (const p of game.parts){
+    cx.globalAlpha = Math.min(1, p.life*2);
+    cx.fillStyle = p.color;
+    if (p.kind === "dust"){ cx.beginPath(); cx.arc(p.x, p.y, p.s, 0, 7); cx.fill(); }
+    else if (p.kind === "chunk"){ cx.save(); cx.translate(p.x, p.y); cx.rotate(p.rot); cx.fillRect(-p.s/2, -p.s/2, p.s, p.s); cx.restore(); }
+    else { cx.fillRect(p.x, p.y, p.s, p.s); }
+  }
+  cx.globalAlpha = 1;
+  cx.textAlign = "center"; cx.font = `${Math.round(clamp(H*0.035, 18, 34))}px "Lilita One", sans-serif`;
+  for (const t of game.pops){
+    cx.globalAlpha = 1 - t.t/1.1;
+    cx.fillStyle = "#000"; cx.fillText(t.text, t.x, t.y + 2);
+    cx.fillStyle = t.color; cx.fillText(t.text, t.x, t.y);
+  }
+  cx.globalAlpha = 1;
+}
+function drawPip(){
+  if (demo || !stream || video.readyState < 2) return;
+  const pw = Math.min(W*0.26, 140), ph = pw*(video.videoHeight/video.videoWidth || 1.33);
+  const x = W - pw - 16, y = H*0.17;
+  cx.save();
+  cx.globalAlpha = 0.85;
+  cx.beginPath(); cx.roundRect(x, y, pw, ph, 10); cx.clip();
+  cx.translate(x + pw, y); cx.scale(-1, 1);
+  cx.drawImage(video, 0, 0, pw, ph);
+  cx.restore();
+  if (rawSm){
+    cx.fillStyle = COL.amber;
+    for (const k of ["nose","lWr","rWr","lAn","rAn","lSh","rSh","lHip","rHip","lKn","rKn"]){
+      const q = rawSm[L[k]]; if (q.v < 0.5) continue;
+      cx.beginPath(); cx.arc(x + (1 - q.x)*pw, y + q.y*ph, 2.5, 0, 7); cx.fill();
+    }
+  }
+  cx.strokeStyle = "rgba(255,195,92,.4)"; cx.lineWidth = 1; cx.beginPath(); cx.roundRect(x, y, pw, ph, 10); cx.stroke();
+}
+function render(t){
+  cx.save();
+  if (game && game.shake > 0) cx.translate(rand(-1,1)*game.shake, rand(-1,1)*game.shake);
+  drawSky(t);
+  if (game){
+    for (const b of game.city) drawBuilding(b);
+    for (const tk of game.tanks) drawTank(tk);
+  }
+  if (phase === "calib" && pose && !calib.ok){
+    // preview the raw skeleton so the player can line up
+    cx.strokeStyle = "rgba(255,195,92,.8)"; cx.lineWidth = 4; cx.lineCap = "round";
+    const r = pose.raw;
+    const bones = [["lSh","rSh"],["lSh","lEl"],["lEl","lWr"],["rSh","rEl"],["rEl","rWr"],["lSh","lHip"],["rSh","rHip"],["lHip","rHip"],["lHip","lKn"],["lKn","lAn"],["rHip","rKn"],["rKn","rAn"]];
+    for (const [a,b] of bones){ if (r[a].v > 0.4 && r[b].v > 0.4){ cx.beginPath(); cx.moveTo(r[a].x, r[a].y); cx.lineTo(r[b].x, r[b].y); cx.stroke(); } }
+    if (r.nose.v > 0.4){ cx.beginPath(); cx.arc(r.nose.x, r.nose.y, 14, 0, 7); cx.stroke(); }
+  } else if ((phase === "play" || phase === "pause" || phase === "calib") && calib.ok) {
+    drawMonster(t);
+  }
+  if (game){
+    for (const hc of game.helis) drawHeli(hc, t);
+    drawShots(); drawFx();
+  }
+  cx.restore();
+  if (game && game.hurt > 0){ cx.fillStyle = `rgba(255,106,77,${game.hurt*0.6})`; cx.fillRect(0,0,W,H); }
+  if (phase === "play" || phase === "calib") drawPip();
+}
+
+/* ---------- loop ---------- */
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (now - (lastFrame || now))/1000); lastFrame = now;
+  if (phase === "calib" || phase === "play" || phase === "pause") detect(now);
+  if (phase === "calib" && !calib.ok){
+    if (updateCalib(dt)){ $("calibScreen").hidden = true; beginPlay(); }
+  }
+  if (phase === "play") update(dt);
+  render(now/1000);
+}
+
+/* ---------- flow ---------- */
+function setStatus(text, isErr){ const s = $("status"); s.textContent = text; s.classList.toggle("err", !!isErr); }
+let wakeLock = null;
+async function keepAwake(){ try{ wakeLock = await navigator.wakeLock?.request("screen"); }catch(e){} }
+
+async function start(isDemo){
+  if (!AC) initAudio(); else if (AC.state === "suspended") AC.resume();
+  demo = isDemo;
+  $("startBtn").disabled = $("demoBtn").disabled = true;
+  try{
+    if (!demo){
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia){
+        throw new Error("insecure");
+      }
+      if (!landmarker) await loadTracker();
+      if (!stream) await startCamera();
+    }
+    keepAwake();
+    $("startScreen").hidden = true; $("endScreen").hidden = true;
+    newGame(); tipIdx = 0;
+    calib.ok = false; calibHold = 0; calibSamples = []; rawSm = null; pose = null;
+    if (demo){
+      // demo skips calibration with a fixed mapping
+      ingest(demoPose(0), performance.now());
+      calibSamples = [{cx: (pose.raw.lAn.x + pose.raw.rAn.x)/2, gy: Math.max(pose.raw.lAn.y, pose.raw.rAn.y), h: Math.max(pose.raw.lAn.y, pose.raw.rAn.y) - pose.raw.nose.y}];
+      finishCalib(); beginPlay();
+    } else {
+      phase = "calib"; $("calibScreen").hidden = false;
+    }
+  }catch(e){
+    let msg = "Something went wrong starting the game. Reload and try again.";
+    if (e && e.message === "insecure") msg = "The camera only works when this page is opened from an https address in Safari. See the setup notes that came with the game.";
+    else if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) msg = "Camera access was blocked. Allow the camera for this site in Safari settings, then reload.";
+    else if (e && e.name === "NotFoundError") msg = "No camera found on this device.";
+    else if (!landmarker) msg = "The body tracker can't load in this viewer. Open the game from its https link in Safari instead. Watch demo works here.";
+    setStatus(msg, true);
+  }finally{
+    $("startBtn").disabled = $("demoBtn").disabled = false;
+  }
+}
+function beginPlay(){
+  phase = "play"; $("hud").hidden = false;
+  tip(demo ? "Demo mode. Start a real round to control the monster." : "Smash the city!");
+  updateHud();
+}
+function endGame(survived){
+  phase = "over"; $("hud").hidden = true; $("banner").hidden = true;
+  const s = game.stats;
+  $("endTitle").textContent = survived ? "City flattened" : "The army got you";
+  $("endSub").textContent = survived ? `You survived the full ${ROUND_SECONDS/60} minutes.` : `You lasted ${Math.floor(game.elapsed/60)}:${String(Math.floor(game.elapsed%60)).padStart(2,"0")}. Guard up or slip the shots.`;
+  const items = [["Score", game.score.toLocaleString()],["Buildings", s.buildings],["Punches", s.punches],["Stomps", s.stomps],["Tanks", s.tanks],["Helicopters", s.helis],["Blocks", s.blocks],["Dodges", s.dodges],["Roars", s.roars]];
+  $("stats").innerHTML = items.map(([k,v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("");
+  $("endScreen").hidden = false;
+  try{ wakeLock?.release(); }catch(e){}
+}
+
+$("startBtn").addEventListener("click", () => start(false));
+$("demoBtn").addEventListener("click", () => start(true));
+$("againBtn").addEventListener("click", () => start(demo));
+cv.addEventListener("click", () => {
+  if (phase === "play"){ phase = "pause"; $("pauseScreen").hidden = false; }
+});
+$("resumeBtn").addEventListener("click", () => { $("pauseScreen").hidden = true; phase = "play"; lastFrame = 0; });
+$("recenterBtn").addEventListener("click", () => {
+  $("pauseScreen").hidden = true;
+  if (demo){ phase = "play"; return; }
+  calib.ok = false; calibHold = 0; calibSamples = []; rawSm = null;
+  phase = "calib"; $("calibScreen").hidden = false;
+});
+$("quitBtn").addEventListener("click", () => { $("pauseScreen").hidden = true; endGame(true); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && phase === "play"){ phase = "pause"; $("pauseScreen").hidden = false; }
+  if (!document.hidden && (phase === "play" || phase === "pause" || phase === "calib")) keepAwake();
+});
+
+// expose internals for testing only
+window.__stomp = { get pose(){ return pose; }, ingest, demoPose, footStomps, feet, get calib(){ return calib; }, finishCalib, setCalibSamples(s){ calibSamples = s; }, newGame, get game(){ return game; }, set phase(v){ phase = v; } };
+
+resize();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
