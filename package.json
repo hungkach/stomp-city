@@ -1,0 +1,15 @@
+{
+  "name": "stomp-city",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kaiju smash fitness game played with your body in front of a phone camera.",
+  "type": "module",
+  "scripts": {
+    "build": "node build/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "update-engine": "node scripts/update-engine.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -2,1057 +2,2083 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Stomp City</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Chivo:wght@400;600;800&display=swap">
 <style>
-/* Layout: one full-screen canvas (the city at night) with HUD and overlay cards floating on top.
-   Deliberately single-theme: a night city reads the same on any host. */
-:root{
-  --sky-top:#12142e;
-  --sky-low:#2c2252;
-  --ink:#f6efe2;
-  --ink-dim:#b9b2c9;
-  --jade:#2f8a74;
-  --jade-dark:#123a31;
-  --amber:#ffc35c;
-  --coral:#ff6a4d;
-  --card:rgba(18,18,40,.88);
-  --line:rgba(255,195,92,.28);
-  --display:"Lilita One","Arial Rounded MT Bold","Trebuchet MS",sans-serif;
-  --body:"Chivo",system-ui,-apple-system,"Segoe UI",sans-serif;
-  color-scheme:dark;
-}
-*{box-sizing:border-box}
-[hidden]{display:none!important}
-html,body{margin:0;height:100%;background:var(--sky-top);color:var(--ink);font-family:var(--body);overflow:hidden;
-  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-canvas#game{position:fixed;inset:0;width:100%;height:100%;display:block}
-video{position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;left:0;top:0}
-
-/* HUD */
-.hud{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 0;display:grid;
-  grid-template-columns:1fr auto 1fr;align-items:start;gap:12px;pointer-events:none}
-.hud[hidden]{display:none!important}
-.meter{display:grid;gap:4px;min-width:0}
-.meter .lab{font:600 11px/1 var(--body);letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase}
-.bar{height:12px;border-radius:6px;background:rgba(255,255,255,.12);overflow:hidden;border:1px solid rgba(255,255,255,.15)}
-.bar i{display:block;height:100%;width:100%;background:var(--jade);transition:width .15s}
-.bar.roar i{background:var(--amber)}
-.bar.roar.ready{box-shadow:0 0 12px var(--amber)}
-.clock{font:400 34px/1 var(--display);font-variant-numeric:tabular-nums;text-align:center;text-shadow:0 2px 0 #000}
-.score{text-align:right;font:400 26px/1 var(--display);font-variant-numeric:tabular-nums;text-shadow:0 2px 0 #000}
-.score small{display:block;font:600 11px/1.4 var(--body);letter-spacing:.08em;color:var(--ink-dim);text-transform:uppercase}
-
-/* Overlay cards */
-.overlay{position:fixed;inset:0;display:grid;place-items:center;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px calc(env(safe-area-inset-bottom,0px) + 16px);overflow-y:auto}
-.card{width:min(440px,100%);background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px 20px;display:grid;gap:14px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-h1{margin:0;font:400 54px/.95 var(--display);color:var(--amber);text-wrap:balance;text-shadow:0 4px 0 var(--jade-dark)}
-h2{margin:0;font:400 30px/1 var(--display);text-wrap:balance}
-p{margin:0;line-height:1.45;color:var(--ink-dim);font-size:15px}
-.moves{display:grid;grid-template-columns:auto 1fr;gap:8px 12px;align-items:baseline;margin:0;font-size:15px}
-.moves dt{font:400 18px/1.2 var(--display);color:var(--amber)}
-.moves dd{margin:0;color:var(--ink);line-height:1.35}
-.setup{font-size:13px;border-top:1px solid var(--line);padding-top:12px}
-.btns{display:flex;flex-wrap:wrap;gap:10px}
-button{font:400 22px/1 var(--display);border:0;border-radius:14px;padding:15px 20px;cursor:pointer;color:#1b1430;background:var(--amber);flex:1 1 auto;box-shadow:0 4px 0 #b4802a}
-button:active{transform:translateY(2px);box-shadow:0 2px 0 #b4802a}
-button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none;font-size:18px}
-button:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
-.status{font:600 14px/1.4 var(--body);color:var(--amber);min-height:1.4em}
-.err{color:var(--coral)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.stats div{background:rgba(255,255,255,.06);border-radius:12px;padding:10px;display:grid;gap:4px;min-width:0}
-.stats b{font:400 26px/1 var(--display);font-variant-numeric:tabular-nums;color:var(--ink)}
-.stats span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-dim)}
-.banner{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 22%);transform:translateX(-50%);background:var(--card);border:1px solid var(--line);
-  padding:10px 16px;border-radius:12px;font:600 15px/1.3 var(--body);text-align:center;max-width:calc(100% - 32px);pointer-events:none}
-@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+  :root { --ink: #fff; --muted: #c9d1dd; --panel: rgba(12, 16, 24, .9); --accent: #7cff6b; --warn: #ffd166; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0f18; color: var(--ink); font: 16px/1.4 system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #demo { position: fixed; inset: 0; z-index: 2; }
+  #demo .re-demo { top: auto; height: 58%; }
+  #demo .re-demo-buttons button[hidden] { display: none; }
+  #pip { position: fixed; right: 10px; bottom: 10px; width: 26vw; max-width: 160px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; border: 2px solid rgba(255,255,255,.6); transform: scaleX(-1); z-index: 3; display: none; background: #000; }
+  .screen { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(6, 9, 15, .72); }
+  .screen[hidden] { display: none; }
+  .card { width: min(440px, 100%); background: var(--panel); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 22px 20px; text-align: center; }
+  .card h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: .5px; color: var(--accent); text-shadow: 0 3px 0 #1d5c17; }
+  .card h2 { margin: 0 0 8px; font-size: 24px; }
+  .card p { margin: 6px 0; color: var(--muted); }
+  .card ul { text-align: left; margin: 10px 0 14px; padding-left: 20px; color: var(--muted); }
+  .card li { margin: 3px 0; }
+  .btns { display: grid; gap: 10px; margin-top: 14px; }
+  button { font: 700 17px system-ui, sans-serif; border: 0; border-radius: 12px; padding: 14px 16px; min-height: 50px; cursor: pointer; color: #08210a; background: var(--accent); }
+  button.secondary { background: #2a3344; color: var(--ink); }
+  .big { font-size: 56px; font-weight: 800; margin: 6px 0; font-variant-numeric: tabular-nums; }
+  table.stats { width: 100%; border-collapse: collapse; margin: 10px 0; font-variant-numeric: tabular-nums; }
+  table.stats td { padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; }
+  table.stats td:last-child { text-align: right; font-weight: 700; }
+  .payoff { text-align: left; font-size: 14px; }
+  #note { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 64px); transform: translateX(-50%); z-index: 4; background: rgba(0,0,0,.6); padding: 6px 12px; border-radius: 10px; font-size: 13px; color: var(--muted); max-width: 92vw; text-align: center; pointer-events: none; }
+  #note[hidden] { display: none; }
 </style>
+<script>
+/* rep-engine 0.1.0 from hungkach/body-arcade@3634b74, inlined by build/build.mjs. Edit engine/ via scripts/update-engine.mjs, not this copy. */
+// ---- engine/core.js ----
+// rep-engine core: namespace, landmark indices, small shared helpers.
+// Every engine file is a plain script that adds to globalThis.RepEngine,
+// so the build step can concatenate them into one inline <script>.
+(function (g) {
+  'use strict';
+  const RE = (g.RepEngine = g.RepEngine || {});
+
+  RE.version = '0.1.0';
+
+  // MediaPipe Pose landmark indices (33-point model). "Left" and "right"
+  // are the player's own anatomical sides.
+  RE.LM = Object.freeze({
+    NOSE: 0,
+    L_SHOULDER: 11, R_SHOULDER: 12,
+    L_ELBOW: 13, R_ELBOW: 14,
+    L_WRIST: 15, R_WRIST: 16,
+    L_HIP: 23, R_HIP: 24,
+    L_KNEE: 25, R_KNEE: 26,
+    L_ANKLE: 27, R_ANKLE: 28,
+  });
+
+  // Knees-up framing: these must be visible for calibration and signals.
+  RE.REQUIRED = Object.freeze([11, 12, 23, 24, 25, 26]);
+
+  RE.LM_NAMES = Object.freeze({
+    0: 'nose', 11: 'left shoulder', 12: 'right shoulder', 13: 'left elbow',
+    14: 'right elbow', 15: 'left wrist', 16: 'right wrist', 23: 'left hip',
+    24: 'right hip', 25: 'left knee', 26: 'right knee', 27: 'left ankle', 28: 'right ankle',
+  });
+
+  // Skeleton lines for the debug overlay (upper body, torso, legs).
+  RE.CONNECTIONS = Object.freeze([
+    [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+    [11, 23], [12, 24], [23, 24],
+    [23, 25], [25, 27], [24, 26], [26, 28],
+  ]);
+
+  RE.clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  RE.now = () => (g.performance && g.performance.now ? g.performance.now() : Date.now());
+
+  // Tiny event emitter. on('*', fn) receives (name, payload) for every event.
+  RE.createEmitter = function () {
+    const handlers = new Map();
+    return {
+      on(name, fn) {
+        if (!handlers.has(name)) handlers.set(name, new Set());
+        handlers.get(name).add(fn);
+        return () => handlers.get(name).delete(fn);
+      },
+      emit(name, payload) {
+        const set = handlers.get(name);
+        if (set) for (const fn of [...set]) safeCall(fn, payload);
+        const all = handlers.get('*');
+        if (all) for (const fn of [...all]) safeCall(fn, name, payload);
+      },
+      clear() { handlers.clear(); },
+    };
+  };
+
+  function safeCall(fn, a, b) {
+    try { fn(a, b); } catch (err) { (g.console || { error() {} }).error('[rep-engine] handler error', err); }
+  }
+
+  // Storage that never throws: private windows, blocked storage and Node
+  // all fall back to an in-memory map for the session.
+  RE.storage = (function () {
+    const memory = new Map();
+    function ls() {
+      try { return g.localStorage || null; } catch (_) { return null; }
+    }
+    return {
+      get(key) {
+        try { const s = ls(); if (s) { const v = s.getItem(key); if (v !== null) return v; } } catch (_) {}
+        return memory.has(key) ? memory.get(key) : null;
+      },
+      set(key, value) {
+        memory.set(key, value);
+        try { const s = ls(); if (s) s.setItem(key, value); } catch (_) {}
+      },
+      remove(key) {
+        memory.delete(key);
+        try { const s = ls(); if (s) s.removeItem(key); } catch (_) {}
+      },
+    };
+  })();
+
+  // Throttled spoken cues for calibration ("step back", "good").
+  RE.speak = (function () {
+    let lastText = '';
+    let lastAt = 0;
+    return function (text, minGapMs = 2500) {
+      const synth = g.speechSynthesis;
+      if (!synth || typeof g.SpeechSynthesisUtterance !== 'function') return false;
+      const t = RE.now();
+      if (text === lastText && t - lastAt < minGapMs) return false;
+      lastText = text;
+      lastAt = t;
+      try {
+        synth.cancel();
+        synth.speak(new g.SpeechSynthesisUtterance(text));
+        return true;
+      } catch (_) { return false; }
+    };
+  })();
+})(globalThis);
+
+// ---- engine/config.js ----
+// Every tunable number lives here. A player profile stores only overrides.
+// Values are starting points from the spec, not tested results.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1';
+
+  RE.defaultConfig = function () {
+    return {
+      pose: {
+        moduleUrl: MP + '/vision_bundle.mjs',
+        wasmBase: MP + '/wasm',
+        modelUrl: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+        delegate: 'GPU', // falls back to CPU automatically if GPU init fails
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      },
+      camera: { idealWidth: 1280, idealHeight: 720 },
+      smoothing: { minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 },
+      visibility: {
+        hold: 0.5,    // below this a landmark holds its last value
+        framing: 0.6, // required landmarks must beat this to pass framing
+      },
+      calibration: {
+        framingHoldMs: 1000,
+        baselineMs: 3000,
+        frameMargin: 0.02,   // landmarks this close to the edge count as out of frame
+        driftRatio: 0.15,    // shoulder width change that suggests re-baseline
+        driftHoldMs: 3000,
+      },
+      signals: {
+        squatFullDrop: 0.5, // hip drop (in T) that reads as squat_depth 1
+      },
+      demo: {
+        doubleTapMs: 350,
+        runHoldMs: 250,
+        runCadence: 170,
+        cadenceWindowMs: 3000,
+      },
+      recorder: { maxMs: 30000, decimals: 4 },
+      overlay: { eventLogSize: 10 },
+    };
+  };
+
+  // Camera presets. mirrorDisplay only flips what the player sees; the math
+  // uses anatomical sides, so it never depends on mirroring.
+  RE.presets = Object.freeze({
+    living_room: { id: 'living_room', label: 'Living room', facingMode: 'user', mirrorDisplay: true, distanceFt: 4 },
+    garage: { id: 'garage', label: 'Garage', facingMode: 'user', mirrorDisplay: true, distanceFt: 6 },
+    custom: { id: 'custom', label: 'Custom', facingMode: 'user', mirrorDisplay: true, distanceFt: null },
+  });
+
+  // Deep merge for config overrides (plain objects only).
+  RE.mergeConfig = function merge(base, overrides) {
+    if (!overrides) return base;
+    const out = Array.isArray(base) ? base.slice() : Object.assign({}, base);
+    for (const key of Object.keys(overrides)) {
+      const b = base ? base[key] : undefined;
+      const o = overrides[key];
+      out[key] = b && o && typeof b === 'object' && typeof o === 'object' && !Array.isArray(o)
+        ? merge(b, o)
+        : o;
+    }
+    return out;
+  };
+})(globalThis);
+
+// ---- engine/one-euro.js ----
+// One Euro filter (Casiez et al. 2012) plus a per-landmark smoother with
+// visibility gating. Low visibility holds the last good value and flags it.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  function alpha(cutoff, dt) {
+    const tau = 1 / (2 * Math.PI * cutoff);
+    return 1 / (1 + tau / dt);
+  }
+
+  class OneEuroFilter {
+    constructor({ minCutoff = 1.0, beta = 0.02, dCutoff = 1.0 } = {}) {
+      this.minCutoff = minCutoff;
+      this.beta = beta;
+      this.dCutoff = dCutoff;
+      this.reset();
+    }
+    reset() { this.x = null; this.dx = 0; this.t = null; }
+    // value: number, tSec: timestamp in seconds
+    filter(value, tSec) {
+      if (this.x === null) { this.x = value; this.t = tSec; return value; }
+      const dt = Math.max(tSec - this.t, 1e-3);
+      this.t = tSec;
+      const rawDx = (value - this.x) / dt;
+      this.dx += alpha(this.dCutoff, dt) * (rawDx - this.dx);
+      const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
+      this.x += alpha(cutoff, dt) * (value - this.x);
+      return this.x;
+    }
+  }
+  RE.OneEuroFilter = OneEuroFilter;
+
+  // Smooths pixel landmarks (x, y) and world landmarks (x, y, z).
+  // Input points: {x, y, v} pixels; world: {x, y, z, v} meters (or null).
+  // scale: pixels per body unit (shoulder width). Filtering happens in
+  // body-scaled units so the One Euro speed term behaves the same whether
+  // the player fills a portrait phone or a landscape tablet.
+  class LandmarkSmoother {
+    constructor(smoothing, holdVisibility) {
+      this.cfg = smoothing;
+      this.hold = holdVisibility;
+      this.reset();
+    }
+    reset() {
+      this.px = new Map();   // index -> [fx, fy]
+      this.wl = new Map();   // index -> [fx, fy, fz]
+      this.last = new Map(); // index -> last good smoothed point
+      this.lastW = new Map();
+    }
+    _filters(map, idx, n) {
+      if (!map.has(idx)) map.set(idx, Array.from({ length: n }, () => new OneEuroFilter(this.cfg)));
+      return map.get(idx);
+    }
+    // Returns {points, world, held:Set<index>}
+    update(points, world, tSec, scale = 1) {
+      const k = scale > 0 ? scale : 1;
+      const outP = new Array(points.length);
+      const outW = world ? new Array(world.length) : null;
+      const held = new Set();
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        if (p.v < this.hold && this.last.has(i)) {
+          // hold the last good value; detectors that need it pause
+          outP[i] = Object.assign({}, this.last.get(i), { v: p.v, held: true });
+          held.add(i);
+        } else {
+          const [fx, fy] = this._filters(this.px, i, 2);
+          const s = { x: fx.filter(p.x / k, tSec) * k, y: fy.filter(p.y / k, tSec) * k, v: p.v, held: false };
+          if (p.v >= this.hold) this.last.set(i, s);
+          outP[i] = s;
+        }
+        if (outW && world[i]) {
+          const w = world[i];
+          if (w.v < this.hold && this.lastW.has(i)) {
+            outW[i] = Object.assign({}, this.lastW.get(i), { v: w.v, held: true });
+          } else {
+            const [a, b, c] = this._filters(this.wl, i, 3);
+            const s = { x: a.filter(w.x, tSec), y: b.filter(w.y, tSec), z: c.filter(w.z, tSec), v: w.v, held: false };
+            if (w.v >= this.hold) this.lastW.set(i, s);
+            outW[i] = s;
+          }
+        }
+      }
+      return { points: outP, world: outW, held };
+    }
+  }
+  RE.LandmarkSmoother = LandmarkSmoother;
+})(globalThis);
+
+// ---- engine/normalize.js ----
+// Body-unit normalization. Every signal is measured in the player's own
+// units so portrait phone, landscape tablet and TV mirroring all agree:
+//   S = calibrated shoulder width (horizontal values are divided by S)
+//   T = calibrated torso length, shoulder midpoint to hip midpoint
+//       (vertical values are divided by T)
+//   origin = calibrated hip midpoint, +x = player's right, +y = up
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  // MediaPipe gives x and y as 0-1 fractions of width and height. Those are
+  // not square, so convert to pixels before measuring any distance.
+  RE.toPixels = function (lm, w, h) {
+    return { x: lm[0] * w, y: lm[1] * h, v: lm[3] == null ? 1 : lm[3] };
+  };
+
+  RE.framePixels = function (raw) {
+    if (!raw || !raw.lm) return null;
+    return raw.lm.map((lm) => RE.toPixels(lm, raw.w, raw.h));
+  };
+
+  RE.frameWorld = function (raw) {
+    if (!raw || !raw.wl) return null;
+    return raw.wl.map((p) => ({ x: p[0], y: p[1], z: p[2], v: p[3] == null ? 1 : p[3] }));
+  };
+
+  RE.mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  RE.dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  RE.orientationOf = (w, h) => (w >= h ? 'landscape' : 'portrait');
+
+  // side: +1 when the player's right appears at larger image x. Measured from
+  // the shoulders at calibration, so a mirrored or unmirrored feed both work.
+  RE.toBody = function (p, cal) {
+    return {
+      x: (cal.side * (p.x - cal.hipMidX)) / cal.shoulderWidth,
+      y: (cal.hipMidY - p.y) / cal.torsoLength, // image y grows down; flip so up is positive
+    };
+  };
+
+  // Angle at joint b (degrees) from three 3D world points.
+  RE.jointAngle = function (a, b, c) {
+    const v1 = [a.x - b.x, a.y - b.y, a.z - b.z];
+    const v2 = [c.x - b.x, c.y - b.y, c.z - b.z];
+    const dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
+    const n = Math.hypot(...v1) * Math.hypot(...v2);
+    if (n === 0) return 180;
+    return (Math.acos(RE.clamp(dot / n, -1, 1)) * 180) / Math.PI;
+  };
+})(globalThis);
+
+// ---- engine/signals.js ----
+// Per-frame continuous signals from smoothed pixel landmarks + calibration.
+// Milestone 1 computes the position signals (lean, squat depth, knee lift,
+// confidence, drift). Cadence, effort, speed and guard arrive with the
+// gesture detectors in milestone 2.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+  const L = RE.LM;
+
+  // Lowest visibility among required landmarks, plus which are missing.
+  RE.confidenceOf = function (points, threshold) {
+    let min = 1;
+    const missing = [];
+    for (const i of RE.REQUIRED) {
+      const v = points[i] ? points[i].v : 0;
+      if (v < min) min = v;
+      if (v < threshold) missing.push(RE.LM_NAMES[i]);
+    }
+    return { confidence: Math.max(0, min), missing };
+  };
+
+  RE.computeSignals = function (points, cal, cfg) {
+    const { confidence, missing } = RE.confidenceOf(points, cfg.visibility.hold);
+    const out = { confidence, missing, calibrated: !!cal };
+    if (!cal) return out;
+
+    const b = (i) => RE.toBody(points[i], cal);
+    const ls = b(L.L_SHOULDER), rs = b(L.R_SHOULDER);
+    const lh = b(L.L_HIP), rh = b(L.R_HIP);
+    const lk = b(L.L_KNEE), rk = b(L.R_KNEE);
+    const sMid = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
+    const hMid = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 };
+
+    // lean: shoulder midpoint minus hip midpoint, in S. + = leaning to player's right
+    out.lean = sMid.x - hMid.x;
+    // hip drop below the calibrated standing hip height, in T
+    out.hipDrop = -hMid.y;
+    out.squatDepth = RE.clamp(out.hipDrop / cfg.signals.squatFullDrop, 0, 1);
+    // knee lift above standing knee height, in T
+    out.kneeLiftL = lk.y - cal.kneeBaseL;
+    out.kneeLiftR = rk.y - cal.kneeBaseR;
+    // shoulder width now vs calibration: drifts when the player moves closer/farther
+    out.shoulderRatio = RE.dist(points[L.L_SHOULDER], points[L.R_SHOULDER]) / cal.shoulderWidth;
+    out.body = { ls, rs, lh, rh, lk, rk, sMid, hMid };
+    return out;
+  };
+})(globalThis);
+
+// ---- engine/calibration.js ----
+// Calibration: framing check -> baseline capture -> move test -> saved profile.
+// One profile per camera preset and orientation, because the pixel baseline
+// only means something for the framing it was captured in.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+  const L = RE.LM;
+
+  // Move test prompts from the spec. A prompt only runs once a detector for
+  // its event is registered (milestone 2); until then the step is skipped.
+  RE.MOVE_TEST = Object.freeze([
+    { id: 'march', prompt: 'March four steps', event: 'step', count: 4 },
+    { id: 'high_knees', prompt: 'Two high knees', event: 'run_start', count: 1 },
+    { id: 'lean_left', prompt: 'Lean left', event: 'lean_left', count: 1 },
+    { id: 'lean_right', prompt: 'Lean right', event: 'lean_right', count: 1 },
+    { id: 'point_left', prompt: 'Point left', event: 'point', match: { side: 'left' }, count: 1 },
+    { id: 'point_right', prompt: 'Point right', event: 'point', match: { side: 'right' }, count: 1 },
+    { id: 'squat', prompt: 'One squat', event: 'squat', count: 1 },
+    { id: 'jab_cross', prompt: 'Jab, cross', event: 'strike', count: 2 },
+  ]);
+
+  // Event names whose detectors exist. Milestone 2 adds to this set.
+  RE.detectors = RE.detectors || new Set();
+
+  function median(values) {
+    const s = values.slice().sort((a, b) => a - b);
+    const m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  // Why framing fails right now, or null if it passes.
+  RE.framingProblem = function (points, w, h, cfg) {
+    if (!points) return { code: 'no_person', prompt: 'Step into view' };
+    const margin = cfg.calibration.frameMargin;
+    const low = [];
+    let outOfFrame = false;
+    for (const i of RE.REQUIRED) {
+      const p = points[i];
+      if (!p || p.v < cfg.visibility.framing) { low.push(RE.LM_NAMES[i]); continue; }
+      if (p.x < w * margin || p.x > w * (1 - margin) || p.y < h * margin || p.y > h * (1 - margin)) outOfFrame = true;
+    }
+    if (low.some((n) => n.includes('knee')) || outOfFrame) return { code: 'step_back', prompt: 'Step back', missing: low };
+    if (low.length) return { code: 'low_visibility', prompt: 'Face the camera', missing: low };
+    return null;
+  };
+
+  class Calibrator {
+    constructor(cfg, presetId) {
+      this.cfg = cfg;
+      this.presetId = presetId;
+      this.state = 'framing';
+      this.framingSince = null;
+      this.baselineSince = null;
+      this.samples = [];
+      this.result = null;
+      this.testIndex = 0;
+      this.testHits = 0;
+      this.tests = RE.MOVE_TEST.filter((t) => RE.detectors.has(t.event));
+      this.skippedTests = RE.MOVE_TEST.length - this.tests.length;
+    }
+
+    // frame: {points (smoothed px), w, h, t (ms)}. Returns a status object.
+    update(frame) {
+      const { points, w, h, t } = frame;
+      if (this.state === 'done') return this.status();
+      if (this.state === 'move_test') return this.status();
+
+      const problem = RE.framingProblem(points, w, h, this.cfg);
+      if (problem) {
+        this.framingSince = null;
+        if (this.state === 'baseline') { this.state = 'framing'; this.samples = []; this.baselineSince = null; }
+        this.problem = problem;
+        return this.status();
+      }
+      this.problem = null;
+
+      if (this.state === 'framing') {
+        if (this.framingSince === null) this.framingSince = t;
+        if (t - this.framingSince >= this.cfg.calibration.framingHoldMs) {
+          this.state = 'baseline';
+          this.baselineSince = t;
+          this.samples = [];
+        }
+        return this.status(t);
+      }
+
+      if (this.state === 'baseline') {
+        this.samples.push(sample(points, w, h));
+        if (t - this.baselineSince >= this.cfg.calibration.baselineMs) {
+          this.result = this._finish(w, h);
+          this.state = this.tests.length ? 'move_test' : 'done';
+        }
+        return this.status(t);
+      }
+      return this.status(t);
+    }
+
+    // Engine forwards gesture events here during the move test.
+    onEvent(name, payload) {
+      if (this.state !== 'move_test') return;
+      const test = this.tests[this.testIndex];
+      if (!test || test.event !== name) return;
+      if (test.match && !Object.keys(test.match).every((k) => payload && payload[k] === test.match[k])) return;
+      this.testHits++;
+      if (this.testHits >= test.count) {
+        this.testIndex++;
+        this.testHits = 0;
+        if (this.testIndex >= this.tests.length) this.state = 'done';
+      }
+    }
+
+    skipTest() {
+      if (this.state !== 'move_test') return;
+      this.testIndex++;
+      this.testHits = 0;
+      if (this.testIndex >= this.tests.length) this.state = 'done';
+    }
+
+    status(t) {
+      const c = this.cfg.calibration;
+      let progress = 0;
+      let prompt = '';
+      if (this.state === 'framing') {
+        prompt = this.problem ? this.problem.prompt : 'Hold still';
+        progress = this.framingSince !== null && t != null ? RE.clamp((t - this.framingSince) / c.framingHoldMs, 0, 1) : 0;
+      } else if (this.state === 'baseline') {
+        prompt = 'Stand tall, arms at your sides';
+        progress = t != null ? RE.clamp((t - this.baselineSince) / c.baselineMs, 0, 1) : 0;
+      } else if (this.state === 'move_test') {
+        const test = this.tests[this.testIndex];
+        prompt = test ? test.prompt : '';
+        progress = this.testIndex / this.tests.length;
+      } else if (this.state === 'done') {
+        prompt = 'Calibrated';
+        progress = 1;
+      }
+      return {
+        state: this.state,
+        prompt,
+        progress,
+        problem: this.problem ? this.problem.code : null,
+        missing: this.problem && this.problem.missing ? this.problem.missing : [],
+        skippedTests: this.skippedTests,
+        result: this.state === 'done' ? this.result : null,
+      };
+    }
+
+    _finish(w, h) {
+      const m = (k) => median(this.samples.map((s) => s[k]));
+      const cal = {
+        version: 1,
+        preset: this.presetId,
+        orientation: RE.orientationOf(w, h),
+        videoW: w,
+        videoH: h,
+        shoulderWidth: m('shoulderWidth'),
+        torsoLength: m('torsoLength'),
+        hipMidX: m('hipMidX'),
+        hipMidY: m('hipMidY'),
+        side: m('sideSign') >= 0 ? 1 : -1,
+        createdAt: new Date().toISOString(),
+      };
+      // Knee baselines in body units, relative to the calibrated hip.
+      cal.kneeBaseL = median(this.samples.map((s) => (cal.hipMidY - s.kneeLY) / cal.torsoLength));
+      cal.kneeBaseR = median(this.samples.map((s) => (cal.hipMidY - s.kneeRY) / cal.torsoLength));
+      return cal;
+    }
+  }
+  RE.Calibrator = Calibrator;
+
+  function sample(p) {
+    const sMid = RE.mid(p[L.L_SHOULDER], p[L.R_SHOULDER]);
+    const hMid = RE.mid(p[L.L_HIP], p[L.R_HIP]);
+    return {
+      shoulderWidth: RE.dist(p[L.L_SHOULDER], p[L.R_SHOULDER]),
+      torsoLength: RE.dist(sMid, hMid),
+      hipMidX: hMid.x,
+      hipMidY: hMid.y,
+      sideSign: Math.sign(p[L.R_SHOULDER].x - p[L.L_SHOULDER].x),
+      kneeLY: p[L.L_KNEE].y,
+      kneeRY: p[L.R_KNEE].y,
+    };
+  }
+
+  // Saved player profiles, keyed by preset and orientation.
+  RE.profiles = {
+    key: (preset, orientation) => `rep-engine:profile:${preset}:${orientation}`,
+    load(preset, orientation) {
+      const raw = RE.storage.get(this.key(preset, orientation));
+      if (!raw) return null;
+      try {
+        const cal = JSON.parse(raw);
+        return cal && cal.version === 1 && cal.shoulderWidth > 0 && cal.torsoLength > 0 ? cal : null;
+      } catch (_) { return null; }
+    },
+    save(cal) { RE.storage.set(this.key(cal.preset, cal.orientation), JSON.stringify(cal)); },
+    clear(preset, orientation) { RE.storage.remove(this.key(preset, orientation)); },
+  };
+
+  // Fires once when shoulder width stays more than driftRatio off baseline
+  // for driftHoldMs, then re-arms when the player is back in range.
+  class DriftMonitor {
+    constructor(cfg) { this.cfg = cfg.calibration; this.since = null; this.fired = false; }
+    update(ratio, t) {
+      if (ratio == null || !isFinite(ratio)) return false;
+      const off = Math.abs(ratio - 1) > this.cfg.driftRatio;
+      if (!off) { this.since = null; this.fired = false; return false; }
+      if (this.since === null) this.since = t;
+      if (!this.fired && t - this.since >= this.cfg.driftHoldMs) { this.fired = true; return true; }
+      return false;
+    }
+    reset() { this.since = null; this.fired = false; }
+  }
+  RE.DriftMonitor = DriftMonitor;
+})(globalThis);
+
+// ---- engine/pose-source.js ----
+// Frame sources. Every source produces the same raw frame shape, which is
+// also the recorded clip format:
+//   { t: ms, w: video width px, h: video height px,
+//     lm: [[x, y, z, visibility] x33] | null,   // MediaPipe 0-1 image coords
+//     wl: [[x, y, z, visibility] x33] | null }  // MediaPipe world coords, meters
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  const pack = (list) => list.map((p) => [p.x, p.y, p.z, p.visibility == null ? 1 : p.visibility]);
+
+  // Live camera + MediaPipe Pose Landmarker (VIDEO mode, one pose).
+  class CameraPoseSource {
+    constructor(cfg) {
+      this.cfg = cfg;
+      this.video = null;
+      this.stream = null;
+      this.landmarker = null;
+      this.raf = 0;
+      this.running = false;
+      this.lastVideoTime = -1;
+      this.fps = 0;
+      this._fpsFrames = 0;
+      this._fpsSince = 0;
+      this.delegate = null;
+    }
+
+    async start(video, preset, onFrame, onStatus = () => {}) {
+      if (!g.isSecureContext) throw new Error('Camera needs https (or localhost).');
+      if (!g.navigator || !g.navigator.mediaDevices || !g.navigator.mediaDevices.getUserMedia) {
+        throw new Error('This browser has no camera access.');
+      }
+      this.video = video;
+      onStatus('Loading pose model');
+      const vision = await import(/* webpackIgnore: true */ this.cfg.pose.moduleUrl);
+      const fileset = await vision.FilesetResolver.forVisionTasks(this.cfg.pose.wasmBase);
+      this.landmarker = await this._createLandmarker(vision, fileset);
+
+      onStatus('Starting camera');
+      this.stream = await g.navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: preset.facingMode || 'user',
+          width: { ideal: this.cfg.camera.idealWidth },
+          height: { ideal: this.cfg.camera.idealHeight },
+        },
+      });
+      video.srcObject = this.stream;
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      await video.play();
+
+      this.running = true;
+      this._fpsSince = RE.now();
+      const loop = () => {
+        if (!this.running) return;
+        this.raf = g.requestAnimationFrame(loop);
+        if (video.readyState < 2 || video.currentTime === this.lastVideoTime) return;
+        this.lastVideoTime = video.currentTime;
+        const t = RE.now();
+        let result;
+        try {
+          result = this.landmarker.detectForVideo(video, t);
+        } catch (err) {
+          onStatus('Pose error: ' + err.message);
+          return;
+        }
+        const lm = result.landmarks && result.landmarks[0] ? pack(result.landmarks[0]) : null;
+        const wl = result.worldLandmarks && result.worldLandmarks[0] ? pack(result.worldLandmarks[0]) : null;
+        this._tickFps(t);
+        onFrame({ t, w: video.videoWidth, h: video.videoHeight, lm, wl });
+      };
+      onStatus('Tracking');
+      loop();
+    }
+
+    async _createLandmarker(vision, fileset) {
+      const p = this.cfg.pose;
+      const options = (delegate) => ({
+        baseOptions: { modelAssetPath: p.modelUrl, delegate },
+        runningMode: 'VIDEO',
+        numPoses: 1,
+        minPoseDetectionConfidence: p.minPoseDetectionConfidence,
+        minPosePresenceConfidence: p.minPosePresenceConfidence,
+        minTrackingConfidence: p.minTrackingConfidence,
+      });
+      try {
+        this.delegate = p.delegate;
+        return await vision.PoseLandmarker.createFromOptions(fileset, options(p.delegate));
+      } catch (err) {
+        if (p.delegate === 'CPU') throw err;
+        this.delegate = 'CPU';
+        return await vision.PoseLandmarker.createFromOptions(fileset, options('CPU'));
+      }
+    }
+
+    _tickFps(t) {
+      this._fpsFrames++;
+      if (t - this._fpsSince >= 1000) {
+        this.fps = (this._fpsFrames * 1000) / (t - this._fpsSince);
+        this._fpsFrames = 0;
+        this._fpsSince = t;
+      }
+    }
+
+    stop() {
+      this.running = false;
+      if (this.raf) g.cancelAnimationFrame(this.raf);
+      if (this.stream) this.stream.getTracks().forEach((tr) => tr.stop());
+      if (this.video) this.video.srcObject = null;
+      if (this.landmarker && this.landmarker.close) {
+        try { this.landmarker.close(); } catch (_) {}
+      }
+      this.stream = null;
+      this.landmarker = null;
+    }
+  }
+  RE.CameraPoseSource = CameraPoseSource;
+
+  RE.validateClip = function (clip) {
+    if (!clip || clip.format !== 'rep-engine-clip' || !Array.isArray(clip.frames)) {
+      throw new Error('Not a rep-engine clip');
+    }
+    if (clip.version !== 1) throw new Error('Unsupported clip version ' + clip.version);
+    return clip;
+  };
+
+  // Feed a whole clip synchronously (tests, analysis).
+  RE.replaySync = function (clip, onFrame) {
+    RE.validateClip(clip);
+    for (const f of clip.frames) onFrame(f);
+  };
+
+  // Replay a clip in real time so the overlay and games see it like live input.
+  class ReplayPoseSource {
+    constructor(clip) { this.clip = RE.validateClip(clip); this.timer = 0; this.running = false; this.fps = 0; }
+    start(onFrame, onEnd = () => {}) {
+      const frames = this.clip.frames;
+      if (!frames.length) { onEnd(); return; }
+      this.running = true;
+      const t0 = frames[0].t;
+      const wall0 = RE.now();
+      let i = 0;
+      const span = frames.length > 1 ? frames[frames.length - 1].t - t0 : 0;
+      this.fps = span > 0 ? ((frames.length - 1) * 1000) / span : 0;
+      const step = () => {
+        if (!this.running) return;
+        const elapsed = RE.now() - wall0;
+        // shift timestamps onto the wall clock so time-based logic still works
+        while (i < frames.length && frames[i].t - t0 <= elapsed) {
+          onFrame(Object.assign({}, frames[i], { t: wall0 + (frames[i].t - t0) }));
+          i++;
+        }
+        if (i >= frames.length) { this.running = false; onEnd(); return; }
+        this.timer = g.setTimeout(step, 8);
+      };
+      step();
+    }
+    stop() { this.running = false; g.clearTimeout(this.timer); }
+  }
+  RE.ReplayPoseSource = ReplayPoseSource;
+})(globalThis);
+
+// ---- engine/recorder.js ----
+// Clip recorder: captures the raw landmark stream (up to 30 s) as JSON so
+// detectors can be replayed and regression-tested without a camera.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  class Recorder {
+    constructor(cfg) {
+      this.cfg = cfg.recorder;
+      this.active = false;
+      this.frames = [];
+      this.meta = null;
+      this.startedAt = 0;
+    }
+    start(meta = {}) {
+      this.active = true;
+      this.frames = [];
+      this.startedAt = null;
+      this.meta = Object.assign({ engineVersion: RE.version, recordedAt: new Date().toISOString() }, meta);
+    }
+    // Returns true when the recorder auto-stops at the max length.
+    push(frame) {
+      if (!this.active) return false;
+      if (this.startedAt === null) this.startedAt = frame.t;
+      const rel = frame.t - this.startedAt;
+      if (rel > this.cfg.maxMs) { this.active = false; return true; }
+      const d = this.cfg.decimals;
+      const r = (list) => (list ? list.map((p) => p.map((v) => round(v, d))) : null);
+      this.frames.push({ t: round(rel, 1), w: frame.w, h: frame.h, lm: r(frame.lm), wl: r(frame.wl) });
+      return false;
+    }
+    stop() {
+      this.active = false;
+      const first = this.frames.find((f) => f.w && f.h);
+      return {
+        format: 'rep-engine-clip',
+        version: 1,
+        meta: Object.assign({}, this.meta, {
+          orientation: first ? RE.orientationOf(first.w, first.h) : null,
+          durationMs: this.frames.length ? this.frames[this.frames.length - 1].t : 0,
+          frameCount: this.frames.length,
+        }),
+        frames: this.frames,
+      };
+    }
+    get elapsedMs() {
+      return this.frames.length ? this.frames[this.frames.length - 1].t : 0;
+    }
+  }
+  RE.Recorder = Recorder;
+
+  function round(v, d) {
+    if (v == null || !isFinite(v)) return v;
+    const k = Math.pow(10, d);
+    return Math.round(v * k) / k;
+  }
+
+  // Browser helper: offer the clip as a .json download.
+  RE.downloadClip = function (clip, filename) {
+    const doc = g.document;
+    if (!doc) return false;
+    const name = filename || `clip-${clip.meta.orientation || 'unknown'}-${Date.now()}.json`;
+    const blob = new g.Blob([JSON.stringify(clip)], { type: 'application/json' });
+    const url = g.URL.createObjectURL(blob);
+    const a = doc.createElement('a');
+    a.href = url;
+    a.download = name;
+    doc.body.appendChild(a);
+    a.click();
+    a.remove();
+    g.setTimeout(() => g.URL.revokeObjectURL(url), 5000);
+    return true;
+  };
+})(globalThis);
+
+// ---- engine/demo.js ----
+// Touch demo mode: emits the same events and signals as the camera, so
+// games are playable and testable from a phone with no tracking running.
+//   Left thumb zone: tap in rhythm = march (tap speed sets cadence).
+//                    Double-tap and hold = run.
+//   Right thumb zone: drag sideways = lean.
+//   Buttons: point L/R, turn around, jab, cross, hook, guard (hold),
+//            squat, drive up, stomp.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  // Steps per minute from step timestamps inside the window.
+  RE.cadenceFromSteps = function (times, now, windowMs) {
+    const recent = times.filter((t) => now - t <= windowMs);
+    if (recent.length < 2) return 0;
+    // average interval of recent steps, but decay once steps stop
+    const span = now - recent[0];
+    return Math.round(((recent.length - 1) * 60000) / Math.max(span, recent[recent.length - 1] - recent[0], 1));
+  };
+
+  // Pure state for demo input; the DOM layer below only calls these methods.
+  class DemoInput {
+    constructor(cfg, emit) {
+      this.cfg = cfg.demo;
+      this.emit = emit;
+      this.steps = [];
+      this.leg = 'left';
+      this.lean = 0;
+      this.guard = false;
+      this.squatUntil = 0;
+      this.running = false;
+      this.runTimer = 0;
+      this.lastTapAt = -Infinity;
+      this.holdTimer = 0;
+    }
+    step(now) {
+      this.steps.push(now);
+      if (this.steps.length > 40) this.steps.shift();
+      this.emit('step', { leg: this.leg });
+      this.leg = this.leg === 'left' ? 'right' : 'left';
+    }
+    leftDown(now) {
+      const isDouble = now - this.lastTapAt <= this.cfg.doubleTapMs;
+      this.lastTapAt = now;
+      if (isDouble) {
+        // double-tap: a hold past runHoldMs starts running
+        this.holdTimer = g.setTimeout(() => this.startRun(), this.cfg.runHoldMs);
+      }
+      this.step(now);
+    }
+    leftUp() {
+      g.clearTimeout(this.holdTimer);
+      if (this.running) this.stopRun();
+    }
+    startRun() {
+      if (this.running) return;
+      this.running = true;
+      this.emit('run_start', {});
+      const interval = 60000 / this.cfg.runCadence;
+      const tick = () => { if (!this.running) return; this.step(RE.now()); this.runTimer = g.setTimeout(tick, interval); };
+      tick();
+    }
+    stopRun() {
+      this.running = false;
+      g.clearTimeout(this.runTimer);
+      this.emit('run_end', {});
+    }
+    setLean(v) { this.lean = RE.clamp(v, -1, 1); }
+    press(action, now) {
+      const strike = (hand, type) => this.emit('strike', { hand, type, power: 1 });
+      switch (action) {
+        case 'point_left': this.emit('point', { side: 'left' }); break;
+        case 'point_right': this.emit('point', { side: 'right' }); break;
+        case 'turn_around': this.emit('turn_around', {}); break;
+        case 'jab': strike('left', 'jab'); break;
+        case 'cross': strike('right', 'cross'); break;
+        case 'hook': strike('left', 'hook'); break;
+        case 'squat': this.squatUntil = now + 600; this.emit('squat', { depth: 1, speed: 1 }); break;
+        case 'drive_up': this.squatUntil = 0; this.emit('drive_up', { depth: 1, speed: 1 }); break;
+        case 'stomp': this.emit('stomp', { leg: this.leg, power: 1 }); this.leg = this.leg === 'left' ? 'right' : 'left'; break;
+        default: break;
+      }
+    }
+    signals(now) {
+      const cadence = RE.cadenceFromSteps(this.steps, now, this.cfg.cadenceWindowMs);
+      return {
+        cadence_spm: cadence,
+        effort: RE.clamp(cadence / this.cfg.runCadence, 0, 1),
+        speed: 0, // locomotion speed arrives with the state machine (milestone 2)
+        lean: this.lean,
+        squat_depth: now < this.squatUntil ? 1 : 0,
+        guard_up: this.guard,
+        confidence: 1,
+      };
+    }
+    destroy() { g.clearTimeout(this.holdTimer); this.running = false; g.clearTimeout(this.runTimer); }
+  }
+  RE.DemoInput = DemoInput;
+
+  const BUTTONS = [
+    ['point_left', 'Point L'], ['point_right', 'Point R'], ['turn_around', 'Turn 180'],
+    ['jab', 'Jab'], ['cross', 'Cross'], ['hook', 'Hook'],
+    ['guard', 'Guard'], ['squat', 'Squat'], ['drive_up', 'Drive up'], ['stomp', 'Stomp'],
+  ];
+
+  const CSS = `
+.re-demo{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr auto;gap:8px;padding:8px;pointer-events:none;font:600 13px/1.2 system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+.re-demo-zone{pointer-events:auto;border-radius:12px;border:1.5px dashed rgba(255,255,255,.45);background:rgba(0,0,0,.18);color:#fff;display:flex;align-items:flex-end;justify-content:center;text-align:center;padding:12px 8px;touch-action:none}
+.re-demo-zone.is-active{background:rgba(255,255,255,.2)}
+.re-demo-buttons{grid-column:1/3;display:grid;grid-template-columns:repeat(5,1fr);gap:6px;pointer-events:auto}
+.re-demo-buttons button{min-height:44px;border-radius:10px;border:0;background:rgba(0,0,0,.55);color:#fff;font:inherit;touch-action:manipulation}
+.re-demo-buttons button:active,.re-demo-buttons button.is-held{background:rgba(255,255,255,.35)}
+`;
+
+  // DOM layer: builds the touch controls inside `container` (position: relative).
+  RE.DemoController = class DemoController {
+    constructor(container, input) {
+      this.input = input;
+      const doc = container.ownerDocument;
+      if (!doc.getElementById('re-demo-style')) {
+        const style = doc.createElement('style');
+        style.id = 're-demo-style';
+        style.textContent = CSS;
+        doc.head.appendChild(style);
+      }
+      const root = (this.root = doc.createElement('div'));
+      root.className = 're-demo';
+      const left = doc.createElement('div');
+      left.className = 're-demo-zone';
+      left.textContent = 'Tap to march · double-tap and hold to run';
+      const right = doc.createElement('div');
+      right.className = 're-demo-zone';
+      right.textContent = 'Drag sideways to lean';
+      const bar = doc.createElement('div');
+      bar.className = 're-demo-buttons';
+      for (const [action, label] of BUTTONS) {
+        const b = doc.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        if (action === 'guard') {
+          b.addEventListener('pointerdown', (e) => { e.preventDefault(); input.guard = true; b.classList.add('is-held'); });
+          const off = () => { input.guard = false; b.classList.remove('is-held'); };
+          b.addEventListener('pointerup', off);
+          b.addEventListener('pointercancel', off);
+          b.addEventListener('pointerleave', off);
+        } else {
+          b.addEventListener('pointerdown', (e) => { e.preventDefault(); input.press(action, RE.now()); });
+        }
+        bar.appendChild(b);
+      }
+
+      left.addEventListener('pointerdown', (e) => { e.preventDefault(); left.classList.add('is-active'); input.leftDown(RE.now()); });
+      const leftUp = () => { left.classList.remove('is-active'); input.leftUp(); };
+      left.addEventListener('pointerup', leftUp);
+      left.addEventListener('pointercancel', leftUp);
+
+      let startX = null;
+      right.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        startX = e.clientX;
+        right.classList.add('is-active');
+        try { right.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+      right.addEventListener('pointermove', (e) => {
+        if (startX === null) return;
+        const width = right.getBoundingClientRect().width || 1;
+        input.setLean((e.clientX - startX) / (width * 0.4));
+      });
+      const rightUp = () => { startX = null; right.classList.remove('is-active'); input.setLean(0); };
+      right.addEventListener('pointerup', rightUp);
+      right.addEventListener('pointercancel', rightUp);
+
+      root.append(left, right, bar);
+      container.appendChild(root);
+    }
+    destroy() { this.root.remove(); }
+  };
+})(globalThis);
+
+// ---- engine/overlay.js ----
+// Debug overlay: skeleton, live signal bars, calibration prompt and the last
+// events. Toggle with a three-finger tap or the "d" key.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  const BARS = [
+    // [label, getter, min, max]
+    ['lean', (s) => s.lean, -1, 1],
+    ['squat', (s) => s.squat_depth, 0, 1],
+    ['cadence', (s) => s.cadence_spm, 0, 220],
+    ['effort', (s) => s.effort, 0, 1],
+    ['conf', (s) => s.confidence, 0, 1],
+  ];
+
+  class DebugOverlay {
+    constructor(canvas, engine, opts = {}) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.engine = engine;
+      this.visible = opts.visible !== false;
+      this.log = [];
+      this.size = engine.cfg.overlay.eventLogSize;
+      this.raf = 0;
+      this.offAll = engine.on('*', (name, payload) => {
+        if (name === 'frame' || name === 'calibration') return;
+        let detail = '';
+        if (name === 'calibrated' && payload && payload.cal) detail = ` ${payload.cal.orientation}${payload.fromProfile ? ' (saved)' : ''}`;
+        else if (payload && Object.keys(payload).length) detail = ' ' + JSON.stringify(payload).replace(/"/g, '');
+        this.log.unshift(`${new Date().toLocaleTimeString([], { hour12: false })} ${name}${detail}`);
+        if (this.log.length > this.size) this.log.length = this.size;
+      });
+      this._onTouch = (e) => { if (e.touches && e.touches.length === 3) this.toggle(); };
+      this._onKey = (e) => { if (e.key === 'd' && !/input|textarea|select/i.test(e.target.tagName)) this.toggle(); };
+      g.addEventListener('touchstart', this._onTouch, { passive: true });
+      g.addEventListener('keydown', this._onKey);
+      const loop = () => { this.raf = g.requestAnimationFrame(loop); this.draw(); };
+      loop();
+    }
+    toggle() { this.visible = !this.visible; if (!this.visible) this._clear(); }
+    _clear() { this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); }
+
+    // Map video pixels to canvas pixels for an object-fit: contain video.
+    _mapper(vw, vh, cw, ch, mirror) {
+      const s = Math.min(cw / vw, ch / vh);
+      const ox = (cw - vw * s) / 2;
+      const oy = (ch - vh * s) / 2;
+      return (p) => {
+        const x = ox + p.x * s;
+        return { x: mirror ? cw - x : x, y: oy + p.y * s };
+      };
+    }
+
+    draw() {
+      const c = this.canvas;
+      const dpr = g.devicePixelRatio || 1;
+      const cw = Math.round(c.clientWidth * dpr);
+      const ch = Math.round(c.clientHeight * dpr);
+      if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+      this._clear();
+      if (!this.visible) return;
+      const ctx = this.ctx;
+      const d = this.engine.debug();
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      const W = c.clientWidth, H = c.clientHeight;
+
+      // skeleton
+      if (d.frame && d.frame.points) {
+        const map = this._mapper(d.frame.w, d.frame.h, W, H, d.mirror);
+        const pts = d.frame.points;
+        ctx.lineWidth = 3;
+        for (const [a, b] of RE.CONNECTIONS) {
+          const pa = pts[a], pb = pts[b];
+          if (!pa || !pb) continue;
+          const ok = pa.v >= 0.5 && pb.v >= 0.5;
+          ctx.strokeStyle = ok ? 'rgba(80,220,140,.9)' : 'rgba(255,170,60,.7)';
+          const A = map(pa), B = map(pb);
+          ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+        }
+        for (const i of RE.REQUIRED) {
+          const p = pts[i];
+          if (!p) continue;
+          const P = map(p);
+          ctx.fillStyle = p.held ? 'rgba(255,170,60,.95)' : 'rgba(255,255,255,.95)';
+          ctx.beginPath(); ctx.arc(P.x, P.y, 4, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      // panel
+      const s = d.signals;
+      const pad = 10, bw = 150, rowH = 18;
+      const lines = 2 + BARS.length + 1 + this.log.length;
+      const panelH = pad * 2 + lines * rowH;
+      const panelW = Math.min(W - 16, 300);
+      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.fillRect(8, 8, panelW, panelH);
+      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      let y = 8 + pad + rowH / 2;
+      const fit = (str) => {
+        const max = panelW - pad * 2;
+        if (ctx.measureText(str).width <= max) return str;
+        let s = str;
+        while (s.length > 1 && ctx.measureText(s + '…').width > max) s = s.slice(0, -1);
+        return s + '…';
+      };
+      const text = (str, color = '#fff') => { ctx.fillStyle = color; ctx.fillText(fit(str), 8 + pad, y); y += rowH; };
+      text(`${d.source} · ${d.fps ? d.fps.toFixed(0) + ' fps' : '-- fps'} · ${d.mode}`);
+      text(d.cal ? `cal ${d.cal.orientation} · S ${d.cal.shoulderWidth.toFixed(0)}px T ${d.cal.torsoLength.toFixed(0)}px` : 'not calibrated', d.cal ? '#cfe' : '#fc8');
+      for (const [label, get, lo, hi] of BARS) {
+        const v = s ? get(s) : null;
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, 8 + pad, y);
+        const x0 = 8 + pad + 60, w = bw - 20;
+        ctx.fillStyle = 'rgba(255,255,255,.18)';
+        ctx.fillRect(x0, y - 5, w, 10);
+        if (v != null && isFinite(v)) {
+          const f = RE.clamp((v - lo) / (hi - lo), 0, 1);
+          ctx.fillStyle = 'rgba(80,220,140,.95)';
+          if (lo < 0) {
+            const zero = x0 + w / 2;
+            const xv = x0 + f * w;
+            ctx.fillRect(Math.min(zero, xv), y - 5, Math.abs(xv - zero), 10);
+          } else {
+            ctx.fillRect(x0, y - 5, f * w, 10);
+          }
+          ctx.fillStyle = '#fff';
+          ctx.fillText(Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(2), x0 + w + 8, y);
+        }
+        y += rowH;
+      }
+      text(d.calibration ? `calibration: ${d.calibration.state} · ${d.calibration.prompt}` : 'events:', '#ddd');
+      for (const line of this.log) text(line, 'rgba(255,255,255,.85)');
+      ctx.restore();
+
+      // big centered calibration prompt
+      if (d.calibration && d.calibration.state !== 'done') {
+        ctx.save();
+        ctx.scale(dpr, dpr);
+        const msg = d.calibration.prompt;
+        ctx.font = '700 28px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(msg).width;
+        ctx.fillStyle = 'rgba(0,0,0,.6)';
+        ctx.fillRect(W / 2 - tw / 2 - 16, H - 92, tw + 32, 48);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(msg, W / 2, H - 68);
+        // progress bar
+        ctx.fillStyle = 'rgba(255,255,255,.25)';
+        ctx.fillRect(W / 2 - 100, H - 36, 200, 6);
+        ctx.fillStyle = 'rgba(80,220,140,.95)';
+        ctx.fillRect(W / 2 - 100, H - 36, 200 * d.calibration.progress, 6);
+        ctx.restore();
+      }
+    }
+
+    destroy() {
+      g.cancelAnimationFrame(this.raf);
+      this.offAll();
+      g.removeEventListener('touchstart', this._onTouch);
+      g.removeEventListener('keydown', this._onKey);
+      this._clear();
+    }
+  }
+  RE.DebugOverlay = DebugOverlay;
+})(globalThis);
+
+// ---- engine/engine.js ----
+// rep-engine public API. Games call these and never touch landmarks.
+//
+//   const engine = RepEngine.create({ video, preset: 'living_room' });
+//   await engine.start();             // camera + pose
+//   await engine.calibrate();         // resolves with the saved profile
+//   engine.on('step', ({ leg }) => ...);
+//   const s = engine.signals();       // per-frame snapshot
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+  const MODES = ['explore', 'combat', 'transit'];
+
+  RE.create = function (opts = {}) {
+    const cfg = RE.mergeConfig(RE.defaultConfig(), opts.config);
+    const emitter = RE.createEmitter();
+    const headless = !!opts.headless;
+
+    const st = {
+      presetId: opts.preset && RE.presets[opts.preset] ? opts.preset : 'living_room',
+      source: 'idle',          // idle | camera | replay | demo
+      sourceObj: null,
+      mode: 'explore',
+      combatTarget: null,
+      cal: null,
+      profileChecked: new Set(),
+      calibrator: null,
+      calStatus: null,
+      calPromise: null,
+      lastPrompt: '',
+      scaleRef: null,
+      smoother: new RE.LandmarkSmoother(cfg.smoothing, cfg.visibility.hold),
+      drift: new RE.DriftMonitor(cfg),
+      recorder: new RE.Recorder(cfg),
+      demoInput: null,
+      demoUi: null,
+      frame: null,
+      raw: null,
+      sig: null,
+      lowConfidence: false,
+      snapshot: emptySnapshot(),
+      session: { startedAt: null, frames: 0, counts: {} },
+    };
+
+    // Count every event for the session summary and feed the move test.
+    emitter.on('*', (name, payload) => {
+      if (name === 'frame' || name === 'calibration') return;
+      st.session.counts[name] = (st.session.counts[name] || 0) + 1;
+      if (st.calibrator) st.calibrator.onEvent(name, payload);
+    });
+
+    function preset() { return RE.presets[st.presetId]; }
+
+    function setCal(cal) {
+      st.cal = cal;
+      st.drift.reset();
+      // Smooth in calibrated body scale from now on (see LandmarkSmoother).
+      st.scaleRef = cal ? cal.shoulderWidth : null;
+      st.smoother.reset();
+    }
+
+    function ingest(raw) {
+      st.raw = raw;
+      st.session.frames++;
+      if (st.session.startedAt === null) st.session.startedAt = raw.t;
+
+      if (st.recorder.active && st.recorder.push(raw)) {
+        emitter.emit('recording_done', { clip: st.recorder.stop() });
+      }
+
+      const orient = raw.w && raw.h ? RE.orientationOf(raw.w, raw.h) : null;
+      if (orient) checkProfile(orient);
+
+      const px = RE.framePixels(raw);
+      let points = null;
+      let world = null;
+      if (px) {
+        if (!st.scaleRef) {
+          const ls = px[RE.LM.L_SHOULDER], rs = px[RE.LM.R_SHOULDER];
+          if (ls.v >= cfg.visibility.hold && rs.v >= cfg.visibility.hold) st.scaleRef = RE.dist(ls, rs) || null;
+        }
+        const sm = st.smoother.update(px, RE.frameWorld(raw), raw.t / 1000, st.scaleRef || 1);
+        points = sm.points;
+        world = sm.world;
+      }
+      st.frame = { t: raw.t, w: raw.w, h: raw.h, points, world };
+
+      if (st.calibrator) runCalibrator();
+
+      const sig = points ? RE.computeSignals(points, st.cal, cfg) : { confidence: 0, missing: RE.REQUIRED.map((i) => RE.LM_NAMES[i]), calibrated: !!st.cal };
+      st.sig = sig;
+
+      // confidence transitions
+      const low = sig.confidence < cfg.visibility.hold;
+      if (low && !st.lowConfidence) emitter.emit('low_confidence', { missing: sig.missing });
+      if (!low && st.lowConfidence) emitter.emit('confidence_ok', {});
+      st.lowConfidence = low;
+
+      // drift: player moved closer or farther than the baseline
+      if (st.cal && !low && st.drift.update(sig.shoulderRatio, raw.t)) {
+        emitter.emit('recalibrate_suggested', { reason: 'distance', shoulderRatio: sig.shoulderRatio });
+      }
+
+      if (st.source !== 'demo') {
+        st.snapshot = Object.assign(emptySnapshot(), {
+          lean: sig.lean != null && !low ? sig.lean : 0,
+          squat_depth: sig.squatDepth != null && !low ? sig.squatDepth : 0,
+          confidence: sig.confidence,
+        });
+      }
+      emitter.emit('frame', st.snapshot);
+    }
+
+    function checkProfile(orient) {
+      if (st.cal && st.cal.orientation !== orient) {
+        // device rotated: switch to that orientation's profile if there is one
+        const p = RE.profiles.load(st.presetId, orient);
+        setCal(p);
+        st.profileChecked.add(orient);
+        emitter.emit('orientation_change', { orientation: orient, calibrated: !!p });
+        if (!p) emitter.emit('recalibrate_needed', { reason: 'orientation', orientation: orient });
+        return;
+      }
+      if (!st.cal && !st.profileChecked.has(orient) && !st.calibrator) {
+        st.profileChecked.add(orient);
+        const p = RE.profiles.load(st.presetId, orient);
+        if (p) { setCal(p); emitter.emit('calibrated', { cal: p, fromProfile: true }); }
+      }
+    }
+
+    function runCalibrator() {
+      const status = st.calibrator.update(st.frame);
+      st.calStatus = status;
+      emitter.emit('calibration', status);
+      if (!headless && status.prompt && status.prompt !== st.lastPrompt) {
+        st.lastPrompt = status.prompt;
+        RE.speak(status.state === 'baseline' ? 'Good. Hold still.' : status.prompt);
+      }
+      if (status.state === 'done') {
+        const cal = status.result;
+        RE.profiles.save(cal);
+        st.calibrator = null;
+        setCal(cal);
+        st.profileChecked.add(cal.orientation);
+        emitter.emit('calibrated', { cal, fromProfile: false, skippedTests: status.skippedTests });
+        if (st.calPromise) { st.calPromise.resolve(cal); st.calPromise = null; }
+      }
+    }
+
+    function stopSource() {
+      if (st.sourceObj && st.sourceObj.stop) st.sourceObj.stop();
+      st.sourceObj = null;
+      if (st.source !== 'demo') st.source = 'idle';
+    }
+
+    const api = {
+      cfg,
+      presets: RE.presets,
+
+      // Start live camera tracking. Needs opts.video (a <video> element).
+      async start(presetId) {
+        if (presetId && RE.presets[presetId]) st.presetId = presetId;
+        if (!opts.video) throw new Error('RepEngine.create needs { video } for camera mode');
+        api.disable_demo();
+        stopSource();
+        const cam = new RE.CameraPoseSource(cfg);
+        st.sourceObj = cam;
+        st.source = 'camera';
+        await cam.start(opts.video, preset(), ingest, (msg) => emitter.emit('status', { message: msg }));
+      },
+
+      // Replay a recorded clip through the full pipeline.
+      start_replay(clip, { realtime = true } = {}) {
+        api.disable_demo();
+        stopSource();
+        st.source = 'replay';
+        return new Promise((resolve) => {
+          const done = () => { st.source = 'idle'; emitter.emit('replay_end', {}); resolve(); };
+          if (!realtime) { RE.replaySync(clip, ingest); done(); return; }
+          const r = new RE.ReplayPoseSource(clip);
+          st.sourceObj = r;
+          r.start(ingest, done);
+        });
+      },
+
+      stop() { stopSource(); api.disable_demo(); },
+
+      // Runs framing check, baseline capture and move test. Resolves with
+      // the saved profile.
+      calibrate(presetId) {
+        if (presetId && RE.presets[presetId]) st.presetId = presetId;
+        if (st.calPromise) st.calPromise.reject(new Error('calibration restarted'));
+        st.calibrator = new RE.Calibrator(cfg, st.presetId);
+        st.lastPrompt = '';
+        return new Promise((resolve, reject) => { st.calPromise = { resolve, reject }; });
+      },
+      skip_move_test() { if (st.calibrator) st.calibrator.skipTest(); },
+      cancel_calibration() {
+        st.calibrator = null;
+        st.calStatus = null;
+        if (st.calPromise) { st.calPromise.reject(new Error('calibration cancelled')); st.calPromise = null; }
+      },
+      clear_profile() {
+        const o = st.cal ? st.cal.orientation : st.frame ? RE.orientationOf(st.frame.w, st.frame.h) : null;
+        if (o) RE.profiles.clear(st.presetId, o);
+        setCal(null);
+        st.profileChecked.clear();
+      },
+      is_calibrated: () => !!st.cal,
+
+      enable_demo(container) {
+        if (st.demoInput) return;
+        stopSource();
+        st.source = 'demo';
+        st.demoInput = new RE.DemoInput(cfg, (name, payload) => emitter.emit(name, payload));
+        if (container) st.demoUi = new RE.DemoController(container, st.demoInput);
+        if (st.session.startedAt === null) st.session.startedAt = RE.now();
+      },
+      disable_demo() {
+        if (!st.demoInput) return;
+        st.demoInput.destroy();
+        if (st.demoUi) st.demoUi.destroy();
+        st.demoInput = null;
+        st.demoUi = null;
+        if (st.source === 'demo') st.source = 'idle';
+        st.snapshot = emptySnapshot();
+      },
+
+      on: (name, fn) => emitter.on(name, fn),
+
+      signals() {
+        if (st.source === 'demo' && st.demoInput) st.snapshot = st.demoInput.signals(RE.now());
+        return Object.assign({}, st.snapshot);
+      },
+
+      set_mode(mode) {
+        if (!MODES.includes(mode)) throw new Error('unknown mode ' + mode);
+        if (mode === st.mode) return;
+        st.mode = mode;
+        if (mode !== 'combat') st.combatTarget = null;
+        emitter.emit('mode', { mode });
+      },
+      enter_combat(target) { st.combatTarget = target || null; api.set_mode('combat'); },
+      exit_combat() { api.set_mode('explore'); },
+      mode: () => st.mode,
+
+      start_recording(meta) { st.recorder.start(Object.assign({ preset: st.presetId }, meta)); },
+      stop_recording() { return st.recorder.stop(); },
+      is_recording: () => st.recorder.active,
+      recording_ms: () => st.recorder.elapsedMs,
+
+      // Milestone 1 summary; work/rest split and per-gesture reps fill in
+      // as detectors land.
+      session_summary() {
+        const end = st.raw ? st.raw.t : RE.now();
+        return {
+          startedAt: st.session.startedAt,
+          durationMs: st.session.startedAt === null ? 0 : Math.max(0, end - st.session.startedAt),
+          frames: st.session.frames,
+          events: Object.assign({}, st.session.counts),
+        };
+      },
+
+      // Debug view for the overlay and tests. Games should not depend on it.
+      debug() {
+        return {
+          source: st.source,
+          mode: st.mode,
+          preset: st.presetId,
+          mirror: preset().mirrorDisplay,
+          fps: st.sourceObj && st.sourceObj.fps ? st.sourceObj.fps : 0,
+          delegate: st.sourceObj && st.sourceObj.delegate ? st.sourceObj.delegate : null,
+          frame: st.frame,
+          raw: st.raw,
+          cal: st.cal,
+          calibration: st.calibrator ? st.calStatus : null,
+          signals: api.signals(),
+          rawSignals: st.sig,
+        };
+      },
+
+      // Feed one raw frame directly (tests and custom sources).
+      _ingest: ingest,
+    };
+    return api;
+  };
+
+  function emptySnapshot() {
+    return { cadence_spm: 0, effort: 0, speed: 0, lean: 0, squat_depth: 0, guard_up: false, confidence: 0 };
+  }
+})(globalThis);
+</script>
 </head>
 <body>
 <canvas id="game"></canvas>
-<video id="cam" playsinline muted autoplay></video>
+<div id="demo"></div>
+<video id="pip" playsinline muted></video>
+<div id="note" hidden></div>
 
-<div class="hud" id="hud" hidden>
-  <div class="meter">
-    <span class="lab">Health</span>
-    <div class="bar"><i id="hpBar"></i></div>
-    <span class="lab" style="margin-top:6px">Roar</span>
-    <div class="bar roar" id="roarWrap"><i id="roarBar" style="width:0%"></i></div>
-  </div>
-  <div class="clock" id="clock">3:00</div>
-  <div class="score"><span id="score">0</span><small id="comboLab">Score</small></div>
-</div>
-
-<div class="banner" id="banner" hidden></div>
-
-<!-- Start screen -->
-<div class="overlay" id="startScreen">
+<div id="title" class="screen">
   <div class="card">
-    <h1>Stomp City</h1>
-    <p>You are the monster. Your phone's camera reads your body, and the kaiju copies every move. Wreck the city for 3 minutes.</p>
-    <dl class="moves">
-      <dt>Punch</dt><dd>Throw fast punches into buildings. Squat to hit the short ones.</dd>
-      <dt>Stomp</dt><dd>Knee up, then slam your foot down. Crushes tanks.</dd>
-      <dt>Reach</dt><dd>Punch high to swat helicopters and missiles.</dd>
-      <dt>Guard</dt><dd>Both fists up by your face blocks incoming fire. Or slip out of the way.</dd>
-      <dt>Roar</dt><dd>When the roar bar is full, raise both arms overhead and hold.</dd>
-    </dl>
-    <p class="setup">Setup: phone upright at about waist height, then stand 6 to 8 feet back so your whole body is in frame. Good lighting helps a lot.</p>
-    <div class="status" id="status"></div>
+    <h1>STOMP CITY</h1>
+    <p>You are 30 meters of bad news. The city has excellent insurance.</p>
+    <ul>
+      <li>March in place to stomp forward</li>
+      <li>Lean left or right to turn</li>
+      <li>Punch straight to smash what's in front</li>
+      <li>Hook to swipe a wide arc</li>
+      <li>Stomp (knee up, slam down) to flatten everything nearby</li>
+    </ul>
+    <p>3 rounds of 3 minutes. Each building you drop adds time, up to 5 minutes a round. 60 seconds of rest between rounds.</p>
     <div class="btns">
-      <button id="startBtn" type="button">Start</button>
-      <button id="demoBtn" class="ghost" type="button">Watch demo</button>
+      <button id="playDemo">Play with touch controls</button>
+      <button id="playCamera" class="secondary">Play with camera</button>
     </div>
   </div>
 </div>
 
-<!-- Calibration -->
-<div class="overlay" id="calibScreen" hidden style="place-items:start center">
-  <div class="card" style="margin-top:12vh">
-    <h2 id="calibTitle">Step into frame</h2>
-    <p id="calibMsg">Back up until your head and feet are both visible.</p>
+<div id="rest" class="screen" hidden>
+  <div class="card">
+    <h2 id="restTitle">Round 1 complete</h2>
+    <p>The city is regenerating. Shake out your legs and breathe.</p>
+    <div class="big" id="restTimer">60</div>
+    <table class="stats" id="restStats"></table>
+    <div class="btns"><button id="skipRest" class="secondary">Start next round now</button></div>
   </div>
 </div>
 
-<!-- Pause -->
-<div class="overlay" id="pauseScreen" hidden>
+<div id="summary" class="screen" hidden>
   <div class="card">
-    <h2>Paused</h2>
-    <p>Recenter if the monster drifted after you moved the phone or changed your spot.</p>
-    <div class="btns">
-      <button id="resumeBtn" type="button">Resume</button>
-      <button id="recenterBtn" class="ghost" type="button">Recenter</button>
-      <button id="quitBtn" class="ghost" type="button">End round</button>
-    </div>
-  </div>
-</div>
-
-<!-- End -->
-<div class="overlay" id="endScreen" hidden>
-  <div class="card">
-    <h2 id="endTitle">City flattened</h2>
-    <p id="endSub"></p>
-    <div class="stats" id="stats"></div>
-    <div class="btns">
-      <button id="againBtn" type="button">Play again</button>
-    </div>
+    <h2>City flattened</h2>
+    <table class="stats" id="sumStats"></table>
+    <div class="payoff" id="payoff"></div>
+    <div class="btns"><button id="again">Play again</button></div>
   </div>
 </div>
 
 <script>
-(() => {
-"use strict";
+(function () {
+  'use strict';
+  const RE = window.RepEngine;
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('game');
+  const ctx = canvas.getContext('2d');
 
-/* ---------- constants ---------- */
-const ROUND_SECONDS = 180;
-const MP_VERSION = "0.10.14";
-const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
-const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
-const L = {nose:0,lEar:7,rEar:8,lSh:11,rSh:12,lEl:13,rEl:14,lWr:15,rWr:16,lHip:23,rHip:24,lKn:25,rKn:26,lAn:27,rAn:28,lFt:31,rFt:32};
-const COL = {
-  body:"#2f8a74", bodyLit:"#3fa88e", dark:"#123a31", belly:"#e7b46c", eye:"#ffd23f", spike:"#e7b46c",
-  bldg:["#33395f","#3d3560","#2c4458","#463a58","#2f3a52"], win:"#ffc35c", winOff:"#22253f",
-  ground:"#1a1730", line:"#3b3560", coral:"#ff6a4d", amber:"#ffc35c", ink:"#f6efe2", tank:"#5d6b45", tankDark:"#343d27", heli:"#56607a"
-};
-
-/* older Safari lacks roundRect */
-if (!CanvasRenderingContext2D.prototype.roundRect){
-  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r){
-    r = Math.min(r, w/2, h/2);
-    this.moveTo(x+r, y); this.arcTo(x+w, y, x+w, y+h, r); this.arcTo(x+w, y+h, x, y+h, r);
-    this.arcTo(x, y+h, x, y, r); this.arcTo(x, y, x+w, y, r); this.closePath();
+  // ---------- tuning (game side; engine thresholds live in engine/config.js) ----------
+  const T = {
+    roundMs: 180000,       // 3-minute rounds
+    roundCapMs: 300000,    // time bonuses cap a round near 5 minutes
+    restMs: 60000,         // rest between rounds
+    rounds: 3,
+    walkSpeed: 13,         // units per second at 110 steps per minute
+    runBoost: 1.6,
+    turnRate: 80,          // degrees per second at full lean
+    leanDeadzone: 0.06,
+    leanFull: 0.25,
+    monsterRadius: 6,
+    punch: { range: 20, cone: 35, damage: 40 },
+    hook: { range: 22, cone: 75, damage: 28 },
+    stomp: { radius: 18, damage: 50 },
+    bumpDamage: 6,         // walking into a building still hurts it
+    comboWindowMs: 3000,
+    bonusMs: 1000,         // per building
+    comboBonusMs: 1000,    // extra per building once the combo reaches 3
   };
-}
 
-/* ---------- dom ---------- */
-const $ = id => document.getElementById(id);
-const cv = $("game"), cx = cv.getContext("2d");
-const video = $("cam");
-let W = 0, H = 0, DPR = 1, groundY = 0;
+  const engine = RE.create({ video: $('pip'), preset: 'living_room' });
 
-function resize(){
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth; H = window.innerHeight;
-  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
-  cx.setTransform(DPR,0,0,DPR,0,0);
-  groundY = H*0.9;
-  buildSkyline();
-  if (game) layoutCity(true);
-}
-window.addEventListener("resize", resize);
-
-/* ---------- audio (synth only, starts on tap) ---------- */
-let AC = null, master = null, noiseBuf = null;
-function initAudio(){
-  try{
-    AC = new (window.AudioContext || window.webkitAudioContext)();
-    master = AC.createGain(); master.gain.value = 0.7; master.connect(AC.destination);
-    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
-    const d = noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
-  }catch(e){ AC = null; }
-}
-function noise(dur, freq, gain, type="lowpass"){
-  if(!AC) return;
-  const s = AC.createBufferSource(); s.buffer = noiseBuf;
-  const f = AC.createBiquadFilter(); f.type = type; f.frequency.value = freq;
-  const g = AC.createGain(); const t = AC.currentTime;
-  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t+dur);
-  s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t+dur);
-}
-function tone(f0, f1, dur, gain, type="sine"){
-  if(!AC) return;
-  const o = AC.createOscillator(); o.type = type; const g = AC.createGain(); const t = AC.currentTime;
-  o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(f1,20), t+dur);
-  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t+dur);
-  o.connect(g); g.connect(master); o.start(t); o.stop(t+dur);
-}
-const sfx = {
-  punch(){ tone(180,60,0.12,0.5,"triangle"); noise(0.08,1800,0.25); },
-  stomp(){ tone(110,28,0.55,0.9); noise(0.4,300,0.6); },
-  crash(){ noise(0.9,900,0.55); tone(70,30,0.6,0.5); },
-  boom(){ noise(0.5,600,0.5); tone(140,40,0.35,0.5); },
-  hurt(){ tone(300,90,0.25,0.35,"sawtooth"); },
-  block(){ tone(900,1400,0.08,0.25,"square"); noise(0.05,4000,0.2,"highpass"); },
-  roar(){ tone(90,60,1.3,0.5,"sawtooth"); tone(140,70,1.3,0.35,"sawtooth"); noise(1.2,500,0.5); },
-  warn(){ tone(1200,1200,0.07,0.12,"square"); }
-};
-
-/* ---------- helpers ---------- */
-const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
-const rand = (a,b) => a + Math.random()*(b-a);
-const lerp = (a,b,t) => a + (b-a)*t;
-const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
-const mid = (a,b) => ({x:(a.x+b.x)/2, y:(a.y+b.y)/2});
-
-/* ---------- pose pipeline ---------- */
-let landmarker = null, stream = null, demo = false;
-let rawSm = null;            // smoothed normalized landmarks
-let lastVideoTime = -1, lastPoseAt = 0, poseStamp = 0;
-let calib = {cx:0, gy:0, s:1, ok:false};
-let pose = null;             // transformed screen-space points keyed by name
-const prevWr = {l:null, r:null};
-const wrSpeed = {l:0, r:0};  // in screen heights per second
-
-function srcDims(){
-  if (demo) return {vw:W, vh:H};
-  return {vw: video.videoWidth || 640, vh: video.videoHeight || 480};
-}
-function toScreen(p){
-  const {vw, vh} = srcDims();
-  const s = Math.max(W/vw, H/vh), dw = vw*s, dh = vh*s;
-  return {x:(W-dw)/2 + (1-p.x)*dw, y:(H-dh)/2 + p.y*dh, v:p.v};
-}
-function applyCalib(p){
-  if (!calib.ok) return p;
-  return {x: W/2 + (p.x - calib.cx)*calib.s, y: groundY + (p.y - calib.gy)*calib.s, v:p.v};
-}
-function ingest(lms, now){
-  if (!rawSm){ rawSm = lms.map(p => ({x:p.x, y:p.y, v:p.visibility ?? 1})); }
-  else {
-    const a = 0.6;
-    for (let i=0;i<lms.length;i++){
-      const r = rawSm[i], p = lms[i];
-      r.x += a*(p.x - r.x); r.y += a*(p.y - r.y); r.v = p.visibility ?? 1;
-    }
+  // ---------- seeded random ----------
+  function rng(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
   }
-  lastPoseAt = now;
-  const out = {};
-  for (const k in L){ out[k] = applyCalib(toScreen(rawSm[L[k]])); }
-  out.raw = {};
-  for (const k in L){ out.raw[k] = toScreen(rawSm[L[k]]); }
-  // wrist speeds
-  const dt = poseStamp ? (now - poseStamp)/1000 : 0;
-  for (const side of ["l","r"]){
-    const w = out[side==="l" ? "lWr" : "rWr"];
-    if (prevWr[side] && dt > 0 && dt < 0.25){
-      const sp = dist(w, prevWr[side]) / dt / H;
-      wrSpeed[side] = Math.max(sp, wrSpeed[side]*0.6);
-    }
-    prevWr[side] = {x:w.x, y:w.y};
-  }
-  poseStamp = now;
-  // derived anatomy
-  out.shMid = mid(out.lSh, out.rSh);
-  out.hipMid = mid(out.lHip, out.rHip);
-  out.sw = clamp(dist(out.lSh, out.rSh), H*0.05, H*0.3);
-  const headUp = out.sw*0.55;
-  out.head = {x: lerp(out.nose.x, out.shMid.x, 0.15), y: out.nose.y - headUp*0.15};
-  out.chest = mid(out.shMid, out.hipMid);
-  pose = out;
-}
 
-async function loadTracker(){
-  setStatus("Loading the body tracker...");
-  const vision = await import(`${MP_URL}/vision_bundle.mjs`);
-  const fileset = await vision.FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
-  const make = delegate => vision.PoseLandmarker.createFromOptions(fileset, {
-    baseOptions:{ modelAssetPath: MODEL_URL, delegate },
-    runningMode:"VIDEO", numPoses:1,
-    minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5
+  // ---------- city ----------
+  const BLOCK = 40, STREET = 16, CELL = BLOCK + STREET, GRID = 6;
+  const PALETTE = [[214, 196, 170], [176, 190, 205], [205, 160, 140], [160, 175, 150], [222, 210, 190], [150, 160, 185], [196, 150, 160]];
+  let city = { buildings: [], blocks: [] };
+
+  function makeCity(seed) {
+    const r = rng(seed);
+    const buildings = [];
+    const blocks = [];
+    for (let gx = -GRID; gx <= GRID; gx++) {
+      for (let gz = -GRID; gz <= GRID; gz++) {
+        const cx = gx * CELL, cz = gz * CELL;
+        blocks.push({ x0: cx - BLOCK / 2, x1: cx + BLOCK / 2, z0: cz - BLOCK / 2, z1: cz + BLOCK / 2, park: gx === 0 && gz === 0 });
+        if (gx === 0 && gz === 0) continue; // start in an empty plaza
+        for (let i = 0; i < 2; i++) {
+          for (let j = 0; j < 2; j++) {
+            if (r() < 0.12) continue;
+            const w = 13 + r() * 5, d = 13 + r() * 5;
+            const bx = cx + (i ? 1 : -1) * BLOCK / 4, bz = cz + (j ? 1 : -1) * BLOCK / 4;
+            const dist = Math.hypot(gx, gz);
+            const h = 10 + r() * 22 + (dist < 3 ? 0 : r() * 30);
+            const col = PALETTE[Math.floor(r() * PALETTE.length)];
+            buildings.push({ x: bx, z: bz, hx: w / 2, hz: d / 2, h, hNow: h, hp: h * 2, maxHp: h * 2, col, state: 'up', fallT: 0, flash: 0 });
+          }
+        }
+      }
+    }
+    return { buildings, blocks };
+  }
+
+  // ---------- monster ----------
+  const mon = { x: 0, z: 0, yaw: 0, speed: 0, legPhase: 0, punchT: 0, punchHand: 1, hookT: 0, stompT: 0 };
+
+  const fwd = (yaw) => ({ x: Math.sin(yaw), z: Math.cos(yaw) });
+  const right = (yaw) => ({ x: Math.cos(yaw), z: -Math.sin(yaw) });
+
+  // ---------- game state ----------
+  const G = {
+    state: 'title', round: 0, roundStart: 0, roundEnd: 0, bonusMs: 0, restUntil: 0,
+    score: 0, combo: 0, lastDropAt: -1e9, comboPop: 0, headline: '', headlineUntil: 0,
+    shake: 0, particles: [], useCamera: false,
+    roundStats: null, totals: null,
+  };
+  const zeroStats = () => ({ steps: 0, stomps: 0, punches: 0, hooks: 0, buildings: 0, score: 0, activeMs: 0 });
+
+  const HEADLINES = [
+    'Zoning board calls emergency meeting',
+    'Realtors now describing the area as open plan',
+    'Local man: I literally just parked there',
+    'Insurance adjusters request hazard pay',
+    'Mayor urges calm while sprinting',
+    'Rooftop bar announces permanent closure, and a crater',
+    'Commute times improve as roads no longer lead anywhere',
+    'City council votes to rename itself Gravel',
+  ];
+
+  // ---------- engine events ----------
+  engine.on('step', () => { if (G.state === 'round') { G.roundStats.steps++; mon.legPhase += Math.PI; } });
+  engine.on('strike', (e) => {
+    if (G.state !== 'round') return;
+    if (e.type === 'hook') { G.roundStats.hooks++; mon.hookT = 1; attack(T.hook, e.power || 1); }
+    else { G.roundStats.punches++; mon.punchT = 1; mon.punchHand = e.hand === 'left' ? -1 : 1; attack(T.punch, e.power || 1); }
   });
-  try { landmarker = await make("GPU"); } catch(e){ landmarker = await make("CPU"); }
-}
-async function startCamera(){
-  setStatus("Starting the camera...");
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio:false,
-    video:{ facingMode:"user", width:{ideal:640}, height:{ideal:640} }
+  engine.on('stomp', (e) => {
+    if (G.state !== 'round') return;
+    G.roundStats.stomps++;
+    mon.stompT = 1;
+    G.shake = 1;
+    for (const b of city.buildings) {
+      if (b.state !== 'up') continue;
+      const d = Math.hypot(b.x - mon.x, b.z - mon.z) - Math.max(b.hx, b.hz);
+      if (d < T.stomp.radius) damage(b, T.stomp.damage * (e.power || 1) * (1 - Math.max(0, d) / T.stomp.radius * 0.5));
+    }
+    dust(mon.x, 1, mon.z, 24, [170, 160, 140]);
   });
-  video.srcObject = stream;
-  await video.play();
-}
-function detect(now){
-  if (demo){ ingest(demoPose(now/1000), now); return; }
-  if (!landmarker || video.readyState < 2) return;
-  if (video.currentTime === lastVideoTime) return;
-  lastVideoTime = video.currentTime;
-  let res;
-  try { res = landmarker.detectForVideo(video, now); } catch(e){ return; }
-  if (res && res.landmarks && res.landmarks[0]) ingest(res.landmarks[0], now);
-}
 
-/* ---------- demo pose (no camera) ---------- */
-function demoPose(t){
-  const pts = Array.from({length:33}, () => ({x:0.5, y:0.5, visibility:1}));
-  const set = (i,x,y) => { pts[i] = {x, y, visibility:1}; };
-  const sway = Math.sin(t*0.6)*0.12;
-  const cxn = 0.5 + sway;                          // normalized, pre-mirror
-  const squat = Math.max(0, Math.sin(t*0.9))**3*0.08;
-  const hipY = 0.6 + squat, shY = 0.38 + squat, noseY = 0.27 + squat;
-  set(L.nose, cxn, noseY); set(L.lEar, cxn+0.03, noseY); set(L.rEar, cxn-0.03, noseY);
-  set(L.lSh, cxn+0.07, shY); set(L.rSh, cxn-0.07, shY);
-  set(L.lHip, cxn+0.05, hipY); set(L.rHip, cxn-0.05, hipY);
-  const cyc = t % 6;
-  const roar = cyc > 4.6;
-  // punches alternate
-  const pl = Math.max(0, Math.sin(t*5)), pr = Math.max(0, Math.sin(t*5+Math.PI));
-  const reach = (side, p) => {
-    const dir = side; const sx = cxn + 0.07*dir;
-    if (roar){ set(side>0?L.lEl:L.rEl, sx+0.03*dir, shY-0.1); set(side>0?L.lWr:L.rWr, sx+0.02*dir, shY-0.2); return; }
-    set(side>0?L.lEl:L.rEl, sx+0.06*dir + p*0.04*dir, shY+0.1 - p*0.06);
-    set(side>0?L.lWr:L.rWr, sx+0.04*dir + p*0.2*dir, shY+0.06 - p*0.02 + squat*0.5);
-  };
-  reach(1, pl); reach(-1, pr);
-  // knee raise on a slow cycle
-  const kn = Math.max(0, Math.sin(t*1.7))**4;
-  const legs = (side, lift) => {
-    const hx = cxn + 0.05*side;
-    set(side>0?L.lKn:L.rKn, hx+0.01*side, 0.75 + squat*0.4 - lift*0.13);
-    set(side>0?L.lAn:L.rAn, hx+0.015*side, 0.9 - lift*0.12);
-    set(side>0?L.lFt:L.rFt, hx+0.04*side, 0.92 - lift*0.12);
-  };
-  legs(1, kn * (Math.floor(t/1.85)%2 ? 1:0)); legs(-1, kn * (Math.floor(t/1.85)%2 ? 0:1));
-  return pts;
-}
-
-/* ---------- calibration ---------- */
-let calibHold = 0, calibSamples = [];
-function bodyVisible(){
-  if (!pose || performance.now() - lastPoseAt > 500) return false;
-  const r = pose.raw;
-  const need = ["nose","lSh","rSh","lHip","rHip","lAn","rAn"];
-  if (!need.every(k => r[k].v > 0.55)) return false;
-  return r.lAn.y < H*0.99 && r.rAn.y < H*0.99 && r.nose.y > 0;
-}
-function finishCalib(){
-  const n = calibSamples.length || 1;
-  const a = calibSamples.reduce((o,s) => ({cx:o.cx+s.cx, gy:o.gy+s.gy, h:o.h+s.h}), {cx:0,gy:0,h:0});
-  const cxv = a.cx/n, gy = a.gy/n, bh = Math.max(a.h/n, 40);
-  calib = {cx:cxv, gy, s: clamp((H*0.6)/bh, 0.5, 3.2), ok:true};
-  rawSm = null; prevWr.l = prevWr.r = null; poseStamp = 0;
-  for (const f of feet) { f.base = null; f.up = false; }
-}
-function updateCalib(dt){
-  const title = $("calibTitle"), msg = $("calibMsg");
-  if (!bodyVisible()){
-    calibHold = 0; calibSamples = [];
-    title.textContent = "Step into frame";
-    msg.textContent = pose ? "I can see part of you. Back up until your head and both feet are in the picture." : "Stand in front of the camera, 6 to 8 feet back.";
-    return false;
-  }
-  calibHold += dt;
-  const r = pose.raw;
-  const g = Math.max(r.lAn.y, r.rAn.y);
-  calibSamples.push({cx:(r.lAn.x + r.rAn.x)/2, gy:g, h:g - r.nose.y});
-  if (calibSamples.length > 40) calibSamples.shift();
-  const left = Math.ceil(2.5 - calibHold);
-  title.textContent = left > 0 ? `Hold still... ${left}` : "Go!";
-  msg.textContent = "Stand tall in your normal stance.";
-  if (calibHold >= 2.5){ finishCalib(); return true; }
-  return false;
-}
-
-/* ---------- city ---------- */
-let skyline = [], stars = [];
-function buildSkyline(){
-  skyline = []; let x = 0;
-  while (x < W){ const w = rand(30,70); skyline.push({x, w, h: rand(H*0.12, H*0.32)}); x += w - 4; }
-  stars = Array.from({length: 70}, () => ({x:rand(0,W), y:rand(0,H*0.5), r:rand(0.5,1.6), tw:rand(0,6)}));
-}
-function makeBuilding(slot, slotW, rising){
-  const w = slotW*rand(0.68,0.9);
-  const h = H*rand(0.16, 0.5);
-  const cols = Math.max(2, Math.round(w/16)), rows = Math.max(3, Math.round(h/20));
-  const lit = Array.from({length: cols*rows}, () => Math.random() < 0.62);
-  const maxhp = Math.round(40 + (h/H)*170);
-  return {slot, x: slot*slotW + (slotW-w)/2, w, h, cur: rising ? 0 : h, hp:maxhp, maxhp, cols, rows, lit,
-          color: COL.bldg[slot % COL.bldg.length], state: rising ? "rising" : "up", t:0, shake:0,
-          cracks:[], hitCd:{l:0, r:0}, roof: Math.floor(rand(0,3))};
-}
-function layoutCity(keep){
-  const slots = clamp(Math.round(W/68), 5, 10), slotW = W/slots;
-  game.city = Array.from({length:slots}, (_,i) => makeBuilding(i, slotW, false));
-  game.slotW = slotW;
-}
-function damageBuilding(b, dmg, x, y){
-  if (b.state !== "up") return false;
-  b.hp -= dmg; b.shake = 0.25;
-  if (b.cracks.length < 7) b.cracks.push({x: clamp(x - b.x, 4, b.w-4), y: clamp(groundY - y, 4, b.h-4), a: rand(0, Math.PI*2)});
-  // knock out a few windows
-  for (let k=0;k<3;k++){ b.lit[Math.floor(Math.random()*b.lit.length)] = false; }
-  for (let k=0;k<6;k++) debris(x, y, b.color);
-  if (b.hp <= 0){
-    b.state = "falling"; b.t = 0; sfx.crash(); game.shake = Math.max(game.shake, 14);
-    const pts = Math.round(80 + (b.h/H)*300);
-    addScore(pts, b.x + b.w/2, groundY - b.h*0.6);
-    game.stats.buildings++; addRoar(9);
-    return true;
-  }
-  return false;
-}
-function updateCity(dt){
-  for (const b of game.city){
-    b.shake = Math.max(0, b.shake - dt);
-    b.hitCd.l = Math.max(0, b.hitCd.l - dt); b.hitCd.r = Math.max(0, b.hitCd.r - dt);
-    if (b.state === "falling"){
-      b.t += dt; b.cur = b.h * Math.max(0, 1 - b.t/0.9);
-      if (Math.random() < 0.6) dust(b.x + rand(0,b.w), groundY - rand(0, 20));
-      if (b.t >= 0.9){ b.state = "gone"; b.t = 0; b.respawn = rand(4,7); }
-    } else if (b.state === "gone"){
-      b.t += dt;
-      if (b.t >= b.respawn){ Object.assign(b, makeBuilding(b.slot, game.slotW, true)); }
-    } else if (b.state === "rising"){
-      b.t += dt; b.cur = b.h * Math.min(1, b.t/1.4);
-      if (b.t >= 1.4){ b.state = "up"; b.cur = b.h; }
+  function attack(spec, power) {
+    const f = fwd(mon.yaw);
+    for (const b of city.buildings) {
+      if (b.state !== 'up') continue;
+      const vx = b.x - mon.x, vz = b.z - mon.z;
+      const dist = Math.hypot(vx, vz);
+      const surface = dist - Math.max(b.hx, b.hz);
+      if (surface > spec.range) continue;
+      const ang = Math.acos(Math.max(-1, Math.min(1, (vx * f.x + vz * f.z) / (dist || 1)))) * 180 / Math.PI;
+      if (ang <= spec.cone || surface < 3) damage(b, spec.damage * power);
     }
   }
-}
 
-/* ---------- effects ---------- */
-function debris(x, y, color){
-  if (game.parts.length > 260) return;
-  game.parts.push({x, y, vx:rand(-260,260), vy:rand(-420,-80), s:rand(3,8), life:rand(0.6,1.2), color, kind:"chunk", rot:rand(0,6)});
-}
-function dust(x, y){
-  if (game.parts.length > 260) return;
-  game.parts.push({x, y, vx:rand(-40,40), vy:rand(-60,-10), s:rand(10,26), life:rand(0.6,1.1), color:"rgba(200,190,215,0.35)", kind:"dust"});
-}
-function spark(x, y, color){
-  for (let i=0;i<10;i++) game.parts.push({x, y, vx:rand(-300,300), vy:rand(-300,300), s:rand(2,4), life:rand(0.2,0.45), color, kind:"spark"});
-}
-function popText(text, x, y, color){ game.pops.push({text, x, y, t:0, color: color || COL.ink}); }
-function updateParts(dt){
-  for (const p of game.parts){
-    p.life -= dt; p.x += p.vx*dt; p.y += p.vy*dt;
-    if (p.kind === "chunk"){ p.vy += 900*dt; p.rot += dt*6; if (p.y > groundY){ p.y = groundY; p.vy *= -0.3; p.vx *= 0.6; } }
-    else if (p.kind === "dust"){ p.s += dt*20; }
+  function damage(b, amount) {
+    b.hp -= amount;
+    b.flash = 1;
+    if (b.hp <= 0 && b.state === 'up') topple(b);
   }
-  game.parts = game.parts.filter(p => p.life > 0);
-  for (const t of game.pops){ t.t += dt; t.y -= dt*50; }
-  game.pops = game.pops.filter(t => t.t < 1.1);
-  game.rings = game.rings.filter(r => (r.t += dt) < 0.5);
-}
 
-/* ---------- scoring ---------- */
-function addScore(pts, x, y){
-  game.combo++; game.comboT = 2.2;
-  const mult = 1 + Math.min(4, Math.floor(game.combo/5))*0.5;
-  const v = Math.round(pts*mult);
-  game.score += v; popText(`+${v}`, x, y, COL.amber);
-}
-function addRoar(n){ game.roar = Math.min(100, game.roar + n); }
+  function topple(b) {
+    b.state = 'falling';
+    b.fallT = 0;
+    const now = performance.now();
+    G.combo = now - G.lastDropAt <= T.comboWindowMs ? G.combo + 1 : 1;
+    G.lastDropAt = now;
+    G.comboPop = 1;
+    const pts = Math.round(b.h * 10 * (1 + (G.combo - 1) * 0.25));
+    G.score += pts;
+    G.roundStats.score += pts;
+    G.roundStats.buildings++;
+    // time bonus, capped so a round never runs past the cap
+    let bonus = T.bonusMs + (G.combo >= 3 ? T.comboBonusMs : 0);
+    bonus = Math.min(bonus, T.roundCapMs - T.roundMs - G.bonusMs);
+    if (bonus > 0) { G.bonusMs += bonus; G.roundEnd += bonus; }
+    if (G.combo === 3 || G.combo === 6 || G.combo === 10) {
+      G.headline = HEADLINES[Math.floor(Math.random() * HEADLINES.length)];
+      G.headlineUntil = now + 3500;
+    }
+    dust(b.x, b.h * 0.6, b.z, 30, b.col);
+  }
 
-/* ---------- body actions ---------- */
-const feet = [{side:"l", base:null, up:false, peak:0, t:0}, {side:"r", base:null, up:false, peak:0, t:0}];
-let guardOn = false, roarHold = 0;
+  function dust(x, y, z, n, col) {
+    for (let i = 0; i < n; i++) {
+      G.particles.push({ x: x + (Math.random() - 0.5) * 10, y: y + Math.random() * 6, z: z + (Math.random() - 0.5) * 10,
+        vx: (Math.random() - 0.5) * 20, vy: 8 + Math.random() * 18, vz: (Math.random() - 0.5) * 20, life: 1, col });
+    }
+    if (G.particles.length > 600) G.particles.splice(0, G.particles.length - 600);
+  }
 
-function fistR(){ return clamp(pose.sw*0.32, 12, 46); }
-function handPunches(dt){
-  const R = fistR();
-  for (const side of ["l","r"]){
-    const w = pose[side === "l" ? "lWr" : "rWr"];
-    if (w.v < 0.4) continue;
-    const sp = wrSpeed[side];
-    const fast = sp > 0.6;
-    if (!fast) continue;
-    // buildings
-    for (const b of game.city){
-      if (b.state !== "up" || b.hitCd[side] > 0) continue;
-      const top = groundY - b.cur;
-      if (w.x + R > b.x && w.x - R < b.x + b.w && w.y + R > top && w.y - R < groundY){
-        const dmg = 16 + Math.min(sp, 3)*10;
-        b.hitCd[side] = 0.32; game.stats.punches++; sfx.punch(); addRoar(1);
-        game.shake = Math.max(game.shake, 4);
-        damageBuilding(b, dmg, w.x, w.y);
-        if (b.state === "up") addScore(10, w.x, w.y - 20);
+  // ---------- update ----------
+  function update(dt, now) {
+    if (G.state === 'round') {
+      const s = engine.signals();
+      // march: speed follows cadence; high cadence counts as running
+      const cadence = s.cadence_spm || 0;
+      let target = Math.min(cadence / 110, 1.4) * T.walkSpeed;
+      if (cadence >= 150) target *= T.runBoost;
+      mon.speed += (target - mon.speed) * Math.min(1, dt * 3);
+      // lean: deadzone, then proportional turn rate
+      const lean = s.lean || 0;
+      const mag = Math.max(0, Math.abs(lean) - T.leanDeadzone) / (T.leanFull - T.leanDeadzone);
+      mon.yaw += Math.sign(lean) * Math.min(1, mag) * T.turnRate * Math.PI / 180 * dt;
+
+      const f = fwd(mon.yaw);
+      const nx = mon.x + f.x * mon.speed * dt, nz = mon.z + f.z * mon.speed * dt;
+      const hit = blocking(nx, nz);
+      if (!hit) { mon.x = nx; mon.z = nz; }
+      else if (mon.speed > 2 && now - (hit.bumpAt || 0) > 450) { hit.bumpAt = now; damage(hit, T.bumpDamage); G.shake = Math.max(G.shake, 0.3); }
+      const lim = GRID * CELL + BLOCK / 2;
+      mon.x = Math.max(-lim, Math.min(lim, mon.x));
+      mon.z = Math.max(-lim, Math.min(lim, mon.z));
+      if (mon.speed > 0.5) mon.legPhase += dt * mon.speed * 0.6;
+
+      if (now >= G.roundEnd) endRound(now);
+    }
+    if (G.state === 'rest') {
+      const left = Math.max(0, G.restUntil - now);
+      $('restTimer').textContent = Math.ceil(left / 1000);
+      if (left <= 0) startRound();
+    }
+
+    for (const b of city.buildings) {
+      if (b.flash > 0) b.flash = Math.max(0, b.flash - dt * 4);
+      if (b.state === 'falling') {
+        b.fallT += dt / 0.7;
+        b.hNow = b.h * (1 - 0.85 * Math.min(1, b.fallT));
+        if (b.fallT >= 1) { b.state = 'rubble'; b.hNow = Math.max(2, b.h * 0.12); }
       }
     }
-    // tanks
-    for (const tk of game.tanks){
-      if (tk.dead) continue;
-      if (Math.abs(w.x - tk.x) < tk.w/2 + R && Math.abs(w.y - (groundY - tk.h/2)) < tk.h/2 + R){ killTank(tk, "Smashed"); game.stats.punches++; }
+    for (const p of G.particles) {
+      p.vy -= 30 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.life -= dt * 0.7;
+      if (p.y < 0) { p.y = 0; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
     }
-    // helicopters
-    for (const hc of game.helis){
-      if (hc.dead) continue;
-      if (Math.hypot(w.x - hc.x, w.y - hc.y) < hc.r + R){ killHeli(hc); game.stats.punches++; }
+    G.particles = G.particles.filter((p) => p.life > 0);
+    mon.punchT = Math.max(0, mon.punchT - dt * 4);
+    mon.hookT = Math.max(0, mon.hookT - dt * 3);
+    mon.stompT = Math.max(0, mon.stompT - dt * 3);
+    G.shake = Math.max(0, G.shake - dt * 2.5);
+    G.comboPop = Math.max(0, G.comboPop - dt * 1.5);
+    if (G.state === 'round' && now - G.lastDropAt > T.comboWindowMs) G.combo = 0;
+  }
+
+  function blocking(x, z) {
+    for (const b of city.buildings) {
+      if (b.state !== 'up') continue;
+      if (Math.abs(x - b.x) < b.hx + T.monsterRadius && Math.abs(z - b.z) < b.hz + T.monsterRadius) return b;
     }
-    // missiles in the air
-    for (const pr of game.shots){
-      if (pr.done) continue;
-      if (Math.hypot(w.x - pr.x, w.y - pr.y) < R + 14){
-        pr.done = true; spark(pr.x, pr.y, COL.amber); sfx.block(); popText("Swatted", pr.x, pr.y, COL.ink);
-        addScore(40, pr.x, pr.y - 24); game.stats.blocks++;
+    return null;
+  }
+
+  // ---------- 3D rendering (plain canvas) ----------
+  const NEAR = 1, FOG = 420;
+  const SKY = [126, 170, 214];
+  let W = 0, H = 0, F = 0, cam = null;
+
+  function setCamera() {
+    const f = fwd(mon.yaw);
+    const back = 54, up = 46, pitch = 0.52;
+    const sx = (Math.random() - 0.5) * G.shake * 3, sy = (Math.random() - 0.5) * G.shake * 3;
+    cam = { x: mon.x - f.x * back + sx, y: up + sy, z: mon.z - f.z * back, yaw: mon.yaw, cp: Math.cos(pitch), sp: Math.sin(pitch) };
+    cam.cy = Math.cos(cam.yaw); cam.syaw = Math.sin(cam.yaw);
+  }
+
+  // world -> camera space {x (right), y (up), z (forward)}
+  function toCam(x, y, z) {
+    const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
+    const xr = dx * cam.cy - dz * cam.syaw;
+    const zr = dx * cam.syaw + dz * cam.cy;
+    return { x: xr, y: dy * cam.cp + zr * cam.sp, z: -dy * cam.sp + zr * cam.cp };
+  }
+
+  // clip a camera-space polygon against the near plane, then project
+  function project(poly) {
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const ain = a.z >= NEAR, bin = b.z >= NEAR;
+      if (ain) out.push(a);
+      if (ain !== bin) {
+        const t = (NEAR - a.z) / (b.z - a.z);
+        out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: NEAR });
       }
     }
+    if (out.length < 3) return null;
+    return out.map((p) => ({ x: W / 2 + (F * p.x) / p.z, y: H / 2 - (F * p.y) / p.z }));
   }
-}
-function footStomps(dt){
-  const lift = H*0.055, land = H*0.022;
-  for (const f of feet){
-    const a = pose[f.side === "l" ? "lAn" : "rAn"];
-    if (a.v < 0.4) continue;
-    if (f.base === null) f.base = a.y;
-    const up = f.base - a.y;
-    if (!f.up){
-      // follow the floor: fast when the foot sits lower than the baseline, slow when it rises
-      const k = a.y > f.base ? dt*4 : dt*0.4;
-      f.base += (a.y - f.base)*Math.min(1, k);
-      if (up > lift){ f.up = true; f.peak = up; f.t = 0; }
-    } else {
-      f.t += dt; f.peak = Math.max(f.peak, up);
-      if (up < land){
-        f.up = false;
-        if (f.t < 2) doStomp(a.x, f.peak);
-      }
-      if (f.t > 3) f.up = false;
+
+  function shade(col, k, depth) {
+    const fog = Math.min(1, Math.max(0, depth / FOG));
+    const c = col.map((v, i) => Math.round(Math.min(255, v * k) * (1 - fog) + SKY[i] * fog));
+    return `rgb(${c[0]},${c[1]},${c[2]})`;
+  }
+
+  function fillPoly(pts, color) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  // Oriented box: center (x, z), base y0, height h, half sizes hx/hz, yaw.
+  // Pushes visible faces with a depth for the painter's sort.
+  function boxFaces(out, o) {
+    const c = Math.cos(o.yaw || 0), s = Math.sin(o.yaw || 0);
+    const R = { x: c, z: -s }, Fw = { x: s, z: c };
+    const y0 = o.y0 || 0, y1 = y0 + o.h;
+    const corner = (lx, lz, y) => ({ x: o.x + lx * R.x + lz * Fw.x, y, z: o.z + lx * R.z + lz * Fw.z });
+    const faces = [
+      { n: [0, 1, 0], pts: [[-1, -1, y1], [1, -1, y1], [1, 1, y1], [-1, 1, y1]], k: 1.12 },
+      { n: [Fw.x, 0, Fw.z], pts: [[-1, 1, y0], [1, 1, y0], [1, 1, y1], [-1, 1, y1]], k: 0.98 },
+      { n: [-Fw.x, 0, -Fw.z], pts: [[-1, -1, y0], [1, -1, y0], [1, -1, y1], [-1, -1, y1]], k: 0.9 },
+      { n: [R.x, 0, R.z], pts: [[1, -1, y0], [1, 1, y0], [1, 1, y1], [1, -1, y1]], k: 0.8 },
+      { n: [-R.x, 0, -R.z], pts: [[-1, -1, y0], [-1, 1, y0], [-1, 1, y1], [-1, -1, y1]], k: 0.86 },
+    ];
+    for (const f of faces) {
+      const wpts = f.pts.map(([a, b, y]) => corner(a * o.hx, b * o.hz, y));
+      const cx = wpts.reduce((t, p) => t + p.x, 0) / 4, cy = wpts.reduce((t, p) => t + p.y, 0) / 4, cz = wpts.reduce((t, p) => t + p.z, 0) / 4;
+      // back-face cull: camera must be on the face's outward side
+      if ((cam.x - cx) * f.n[0] + (cam.y - cy) * f.n[1] + (cam.z - cz) * f.n[2] <= 0) continue;
+      const cpts = wpts.map((p) => toCam(p.x, p.y, p.z));
+      if (cpts.every((p) => p.z < NEAR)) continue;
+      const depth = Math.hypot(cx - cam.x, cy - cam.y, cz - cam.z);
+      out.push({ cpts, color: shade(o.col, f.k * (o.flash ? 1 + o.flash * 0.6 : 1), depth), depth: o.sortDepth != null ? o.sortDepth : depth, sub: depth });
     }
   }
-}
-function doStomp(x, peak){
-  game.stats.stomps++; sfx.stomp();
-  const power = clamp(peak/(H*0.1), 0.8, 1.8);
-  const radius = W*0.2*power;
-  game.shake = Math.max(game.shake, 10*power);
-  game.rings.push({x, y:groundY, r:radius, t:0});
-  for (let i=0;i<8;i++) dust(x + rand(-30,30), groundY - 4);
-  for (const b of game.city){
-    const bx = clamp(x, b.x, b.x + b.w);
-    const d = Math.abs(bx - x);
-    if (d < radius) damageBuilding(b, (26 + 20*power)*(1 - d/radius*0.6), bx, groundY - 10);
-  }
-  for (const tk of game.tanks) if (!tk.dead && Math.abs(tk.x - x) < radius) killTank(tk, "Crushed");
-  addRoar(2);
-}
-function checkGuard(){
-  const R = pose.sw*1.05;
-  const l = pose.lWr, r = pose.rWr;
-  guardOn = l.v > 0.4 && r.v > 0.4 && dist(l, pose.head) < R && dist(r, pose.head) < R && l.y < pose.shMid.y + pose.sw*0.3 && r.y < pose.shMid.y + pose.sw*0.3;
-}
-function checkRoar(dt){
-  const up = pose.lWr.v > 0.4 && pose.rWr.v > 0.4 && pose.lWr.y < pose.nose.y - pose.sw*0.35 && pose.rWr.y < pose.nose.y - pose.sw*0.35;
-  if (up && game.roar >= 100){ roarHold += dt; if (roarHold > 0.6){ doRoar(); roarHold = 0; } }
-  else roarHold = 0;
-}
-function doRoar(){
-  game.roar = 0; game.roaring = 1.3; game.stats.roars++; sfx.roar();
-  game.shake = 22;
-  popText("Roar!", pose.head.x, pose.head.y - pose.sw, COL.amber);
-  for (const b of game.city) if (b.state === "up") damageBuilding(b, 70, b.x + b.w/2, groundY - b.cur*0.5);
-  for (const tk of game.tanks) if (!tk.dead) killTank(tk, "Blown away");
-  for (const hc of game.helis) if (!hc.dead) killHeli(hc);
-  for (const pr of game.shots) pr.done = true;
-}
 
-/* ---------- enemies ---------- */
-function spawnTank(){
-  const fromLeft = pose ? pose.hipMid.x > W/2 : Math.random() < 0.5;
-  const w = clamp(H*0.11, 50, 110), h = w*0.5;
-  game.tanks.push({x: fromLeft ? -w : W + w, dir: fromLeft ? 1 : -1, w, h, fire: rand(2,3), dead:false, deadT:0, aim:0});
-  if (!game.seen.tank){ game.seen.tank = true; tip("Tank! Knee up and stomp near it."); }
-}
-function spawnHeli(){
-  const fromLeft = Math.random() < 0.5;
-  const r = clamp(H*0.045, 22, 46);
-  game.helis.push({x: fromLeft ? -r*3 : W + r*3, y: H*rand(0.2, 0.32), r, dir: fromLeft ? 1 : -1, fire: rand(3,4), warn:false, dead:false, deadT:0, bob: rand(0,6)});
-  if (!game.seen.heli){ game.seen.heli = true; tip("Helicopter! Reach up and punch it."); }
-}
-function killTank(tk, label){
-  tk.dead = true; tk.deadT = 0; sfx.boom(); game.stats.tanks++;
-  spark(tk.x, groundY - tk.h/2, COL.coral); for (let i=0;i<8;i++) debris(tk.x, groundY - tk.h/2, COL.tank);
-  addScore(150, tk.x, groundY - tk.h - 10); addRoar(10); popText(label, tk.x, groundY - tk.h - 40, COL.ink);
-}
-function killHeli(hc){
-  hc.dead = true; hc.deadT = 0; sfx.boom(); game.stats.helis++;
-  spark(hc.x, hc.y, COL.coral); for (let i=0;i<10;i++) debris(hc.x, hc.y, COL.heli);
-  addScore(250, hc.x, hc.y - 30); addRoar(12);
-}
-function fire(from, targetKind, kind){
-  const tgt = targetKind === "head" ? pose.head : pose.chest;
-  game.shots.push({x0:from.x, y0:from.y, x1:tgt.x, y1:tgt.y, x:from.x, y:from.y, t:0, dur: kind === "shell" ? 1.25 : 1.05, kind, target: targetKind, done:false});
-}
-function updateEnemies(dt){
-  const d = game.elapsed/ROUND_SECONDS;
-  // spawns
-  game.tankT -= dt; game.heliT -= dt;
-  const aliveT = game.tanks.filter(t => !t.dead).length, aliveH = game.helis.filter(h => !h.dead).length;
-  if (game.tankT <= 0){
-    if (aliveT < (d > 0.4 ? 2 : 1)) spawnTank();
-    game.tankT = lerp(9, 5, d);
+  function render(now) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cw = Math.round(innerWidth * dpr), ch = Math.round(innerHeight * dpr);
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    W = innerWidth; H = innerHeight;
+    F = Math.max(W, H) * 0.62;
+    setCamera();
+
+    // sky and ground
+    const horizon = H / 2 - F * (cam.sp / cam.cp);
+    const sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, horizon));
+    sky.addColorStop(0, '#5e8fc4'); sky.addColorStop(1, `rgb(${SKY.join(',')})`);
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, Math.max(0, horizon));
+    ctx.fillStyle = shade([70, 74, 82], 1, 120); ctx.fillRect(0, Math.max(0, horizon), W, H);
+
+    // blocks (sidewalk slabs and the plaza)
+    for (const bl of city.blocks) {
+      const cx = (bl.x0 + bl.x1) / 2, cz = (bl.z0 + bl.z1) / 2;
+      const depth = Math.hypot(cx - cam.x, cz - cam.z);
+      if (depth > FOG + 60) continue;
+      const pts = project([[bl.x0, bl.z0], [bl.x1, bl.z0], [bl.x1, bl.z1], [bl.x0, bl.z1]].map(([x, z]) => toCam(x, 0.05, z)));
+      if (pts) fillPoly(pts, shade(bl.park ? [96, 150, 88] : [150, 150, 146], 1, depth));
+    }
+
+    const faces = [];
+    for (const b of city.buildings) {
+      const depth = Math.hypot(b.x - cam.x, b.z - cam.z);
+      if (depth > FOG + 40) continue;
+      const c = toCam(b.x, b.hNow / 2, b.z);
+      if (c.z < -30) continue;
+      boxFaces(faces, { x: b.x, z: b.z, hx: b.hx, hz: b.hz, h: b.hNow, col: b.state === 'rubble' ? [120, 112, 104] : b.col, flash: b.flash, sortDepth: depth });
+    }
+    monsterFaces(faces);
+    // painter's sort: far objects first; inside an object, far faces first
+    faces.sort((a, b) => b.depth - a.depth || b.sub - a.sub);
+    for (const f of faces) { const pts = project(f.cpts); if (pts) fillPoly(pts, f.color); }
+
+    // dust
+    for (const p of G.particles) {
+      const c = toCam(p.x, p.y, p.z);
+      if (c.z < NEAR) continue;
+      const sx = W / 2 + (F * c.x) / c.z, sy = H / 2 - (F * c.y) / c.z;
+      const r = Math.max(1, (F * 1.4) / c.z);
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = `rgb(${p.col.join(',')})`;
+      ctx.fillRect(sx - r / 2, sy - r / 2, r, r);
+    }
+    ctx.globalAlpha = 1;
+
+    hud(now);
   }
-  if (game.elapsed > 35 && game.heliT <= 0){
-    if (aliveH < (d > 0.6 ? 2 : 1)) spawnHeli();
-    game.heliT = lerp(14, 8, d);
-  }
-  const mx = pose ? pose.hipMid.x : W/2;
-  for (const tk of game.tanks){
-    if (tk.dead){ tk.deadT += dt; continue; }
-    const stopAt = mx - tk.dir*W*0.3;
-    if ((tk.dir > 0 && tk.x < stopAt) || (tk.dir < 0 && tk.x > stopAt)) tk.x += tk.dir*W*0.12*dt;
-    tk.fire -= dt;
-    if (tk.fire <= 0 && pose && tk.x > 0 && tk.x < W){ fire({x: tk.x + tk.dir*tk.w*0.5, y: groundY - tk.h}, "chest", "shell"); tk.fire = lerp(3.4, 2.2, d); }
-  }
-  for (const hc of game.helis){
-    if (hc.dead){ hc.deadT += dt; hc.y += dt*260; hc.x += hc.dir*dt*60; continue; }
-    hc.bob += dt*2;
-    const tx = clamp(mx + hc.dir*-W*0.28, hc.r*2, W - hc.r*2);
-    hc.x += (tx - hc.x)*Math.min(1, dt*0.8);
-    hc.y += Math.sin(hc.bob)*dt*14;
-    hc.fire -= dt;
-    const wasWarn = hc.warn; hc.warn = hc.fire < 0.9;
-    if (hc.warn && !wasWarn) sfx.warn();
-    if (hc.fire <= 0 && pose){ fire({x: hc.x, y: hc.y + hc.r*0.4}, "head", "missile"); hc.fire = lerp(4.2, 2.8, d); }
-  }
-  game.tanks = game.tanks.filter(t => !t.dead || t.deadT < 0.1);
-  game.helis = game.helis.filter(h => !h.dead || (h.deadT < 1.2 && h.y < groundY));
-  // projectiles
-  for (const p of game.shots){
-    if (p.done) continue;
-    p.t += dt; const u = Math.min(1, p.t/p.dur);
-    p.x = lerp(p.x0, p.x1, u);
-    p.y = lerp(p.y0, p.y1, u) - (p.kind === "shell" ? Math.sin(u*Math.PI)*H*0.18 : 0);
-    if (u >= 1){
-      p.done = true;
-      if (!pose) continue;
-      const now = p.target === "head" ? pose.head : pose.chest;
-      const near = Math.hypot(now.x - p.x1, now.y - p.y1) < pose.sw*0.9;
-      if (guardOn){ spark(p.x, p.y, COL.amber); sfx.block(); popText("Blocked", p.x, p.y - 20); game.stats.blocks++; addRoar(3); }
-      else if (near){
-        const dmg = p.kind === "shell" ? 7 : 10;
-        if (!demo) game.hp = Math.max(0, game.hp - dmg);
-        game.hurt = 0.35; sfx.hurt(); spark(p.x, p.y, COL.coral);
-        game.combo = 0; popText(`-${dmg}`, p.x, p.y - 20, COL.coral);
-      } else { popText("Dodged", p.x, p.y - 20); game.stats.dodges++; noise(0.3,700,0.3); }
+
+  function monsterFaces(out) {
+    const R = right(mon.yaw), Fw = fwd(mon.yaw);
+    const at = (lx, lz) => ({ x: mon.x + lx * R.x + lz * Fw.x, z: mon.z + lx * R.z + lz * Fw.z });
+    const depth = Math.hypot(mon.x - cam.x, mon.z - cam.z);
+    const green = [92, 190, 84], dark = [60, 140, 60], belly = [200, 220, 140];
+    const parts = [];
+    const lift = (side) => Math.max(0, Math.sin(mon.legPhase + (side > 0 ? 0 : Math.PI))) * 4 + (mon.stompT > 0 && side > 0 ? mon.stompT * 6 : 0);
+    parts.push({ l: [-3.2, 0], y0: lift(-1), h: 9, hx: 2.4, hz: 2.6, col: dark });
+    parts.push({ l: [3.2, 0], y0: lift(1), h: 9, hx: 2.4, hz: 2.6, col: dark });
+    parts.push({ l: [0, -6], y0: 4, h: 4, hx: 1.6, hz: 5, col: dark });                 // tail
+    parts.push({ l: [0, 0], y0: 8, h: 13, hx: 5, hz: 4, col: green });                   // body
+    parts.push({ l: [0, 3.6], y0: 10, h: 9, hx: 3.6, hz: 0.6, col: belly });             // belly plate
+    parts.push({ l: [0, 2.5], y0: 21, h: 6, hx: 3.4, hz: 4.2, col: green });              // head
+    for (let i = 0; i < 4; i++) parts.push({ l: [0, -2 - i * 1.6], y0: 20 - i * 2.2, h: 2.4, hx: 0.7, hz: 0.7, col: [240, 230, 120] }); // spines
+    const punchReach = mon.punchT * 7, hookSwing = mon.hookT;
+    const armL = { l: [-6, 1 + (mon.punchHand < 0 ? punchReach : 0) + hookSwing * 3], y0: 14, h: 3, hx: 1.4, hz: 3.4, col: green };
+    const armR = { l: [6 - hookSwing * 4, 1 + (mon.punchHand > 0 ? punchReach : 0) + hookSwing * 5], y0: 14, h: 3, hx: 1.4, hz: 3.4, col: green };
+    parts.push(armL, armR);
+    for (const p of parts) {
+      const c = at(p.l[0], p.l[1]);
+      boxFaces(out, { x: c.x, z: c.z, y0: p.y0, h: p.h, hx: p.hx, hz: p.hz, yaw: mon.yaw, col: p.col, sortDepth: depth });
     }
   }
-  game.shots = game.shots.filter(p => !p.done);
-}
 
-/* ---------- game state ---------- */
-let game = null, phase = "menu", lastFrame = 0, tipT = 0;
-function newGame(){
-  game = {score:0, hp:100, roar:0, combo:0, comboT:0, elapsed:0, shake:0, hurt:0, roaring:0,
-          city:[], slotW:0, parts:[], pops:[], rings:[], tanks:[], helis:[], shots:[],
-          tankT:12, heliT:0, seen:{}, stats:{punches:0, stomps:0, buildings:0, tanks:0, helis:0, blocks:0, dodges:0, roars:0}};
-  layoutCity();
-}
-function tip(text){ const b = $("banner"); b.textContent = text; b.hidden = false; tipT = 3; }
-const tips = [
-  [6, "Squat down to punch the short buildings."],
-  [20, "Knee up, then slam it down. That's a stomp."],
-  [50, "Fists up by your face to block. Or slip out of the way."],
-  [70, "Full roar bar? Both arms overhead and hold."]
-];
-let tipIdx = 0;
-
-function update(dt){
-  if (phase !== "play") return;
-  game.elapsed += dt;
-  if (tipIdx < tips.length && game.elapsed > tips[tipIdx][0]){ tip(tips[tipIdx][1]); tipIdx++; }
-  if (tipT > 0){ tipT -= dt; if (tipT <= 0) $("banner").hidden = true; }
-  const lost = performance.now() - lastPoseAt > 1200;
-  if (lost && !demo){ $("banner").textContent = "I lost you. Step back into frame."; $("banner").hidden = false; tipT = 0.5; }
-  if (pose && !lost){
-    checkGuard(); handPunches(dt); footStomps(dt); checkRoar(dt);
-  }
-  wrSpeed.l *= Math.pow(0.02, dt); wrSpeed.r *= Math.pow(0.02, dt);
-  updateCity(dt); updateEnemies(dt); updateParts(dt);
-  game.shake = Math.max(0, game.shake - dt*40);
-  game.hurt = Math.max(0, game.hurt - dt);
-  game.roaring = Math.max(0, game.roaring - dt);
-  game.comboT -= dt; if (game.comboT <= 0) game.combo = 0;
-  updateHud();
-  if (game.hp <= 0) endGame(false);
-  else if (game.elapsed >= ROUND_SECONDS) endGame(true);
-}
-function updateHud(){
-  const left = Math.max(0, ROUND_SECONDS - game.elapsed);
-  $("clock").textContent = `${Math.floor(left/60)}:${String(Math.floor(left%60)).padStart(2,"0")}`;
-  $("score").textContent = game.score.toLocaleString();
-  const mult = 1 + Math.min(4, Math.floor(game.combo/5))*0.5;
-  $("comboLab").textContent = game.combo >= 5 ? `Combo x${mult}` : "Score";
-  $("hpBar").style.width = `${game.hp}%`;
-  $("hpBar").style.background = game.hp < 30 ? COL.coral : "";
-  $("roarBar").style.width = `${game.roar}%`;
-  $("roarWrap").classList.toggle("ready", game.roar >= 100);
-}
-
-/* ---------- drawing ---------- */
-function drawSky(t){
-  const g = cx.createLinearGradient(0,0,0,groundY);
-  g.addColorStop(0, "#12142e"); g.addColorStop(1, "#2c2252");
-  cx.fillStyle = g; cx.fillRect(0,0,W,H);
-  for (const s of stars){ cx.globalAlpha = 0.4 + 0.4*Math.sin(t*1.5 + s.tw); cx.fillStyle = "#f6efe2"; cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, 7); cx.fill(); }
-  cx.globalAlpha = 1;
-  cx.fillStyle = "#f3e3c0"; cx.beginPath(); cx.arc(W*0.8, H*0.14, Math.min(W,H)*0.06, 0, 7); cx.fill();
-  cx.fillStyle = "#1d1a3d";
-  for (const b of skyline) cx.fillRect(b.x, groundY - b.h, b.w, b.h);
-  cx.fillStyle = COL.ground; cx.fillRect(0, groundY, W, H - groundY);
-  cx.strokeStyle = COL.line; cx.lineWidth = 3; cx.setLineDash([22,18]);
-  cx.beginPath(); cx.moveTo(0, groundY + (H-groundY)*0.5); cx.lineTo(W, groundY + (H-groundY)*0.5); cx.stroke(); cx.setLineDash([]);
-}
-function drawBuilding(b){
-  if (b.state === "gone"){
-    cx.fillStyle = "#2a2440"; cx.fillRect(b.x, groundY - 8, b.w, 8);
-    return;
-  }
-  const sx = b.shake > 0 ? rand(-4,4) : 0;
-  const top = groundY - b.cur, x = b.x + sx;
-  cx.fillStyle = b.state === "rising" ? "#3c3a52" : b.color;
-  cx.fillRect(x, top, b.w, b.cur);
-  // roof detail
-  if (b.state === "up"){
-    cx.fillStyle = "#22253f";
-    if (b.roof === 1){ cx.fillRect(x + b.w*0.6, top - 10, b.w*0.18, 10); }
-    if (b.roof === 2){ cx.fillRect(x + b.w*0.48, top - 22, 3, 22); cx.fillStyle = COL.coral; cx.fillRect(x + b.w*0.48 - 1, top - 24, 5, 4); }
-  }
-  // windows, drawn from the ground up so sinking hides the top rows
-  const pad = 6, cw2 = (b.w - pad*2)/b.cols, rh = (b.h - pad*2)/b.rows;
-  for (let r=0;r<b.rows;r++){
-    const wy = groundY - pad - (r+1)*rh;
-    if (wy < top + 3) break;
-    for (let c=0;c<b.cols;c++){
-      const on = b.state === "up" && b.lit[r*b.cols + c];
-      cx.fillStyle = on ? COL.win : COL.winOff;
-      cx.fillRect(x + pad + c*cw2 + cw2*0.2, wy + rh*0.2, cw2*0.6, rh*0.55);
+  function hud(now) {
+    if (G.state !== 'round') return;
+    const top = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0) + 14;
+    const left = Math.max(0, G.roundEnd - now);
+    const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
+    ctx.textBaseline = 'top';
+    ctx.font = '800 22px system-ui, sans-serif';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.fillStyle = '#fff';
+    const line = (txt, x, y, align) => { ctx.textAlign = align; ctx.strokeText(txt, x, y); ctx.fillText(txt, x, y); };
+    line(`Round ${G.round}/${T.rounds}  ${mm}:${String(ss).padStart(2, '0')}`, 14, top, 'left');
+    line(`${G.score.toLocaleString()}`, W - 14, top, 'right');
+    ctx.font = '600 14px system-ui, sans-serif';
+    line(`+${Math.round(G.bonusMs / 1000)}s bonus  ·  ${G.roundStats.buildings} down`, 14, top + 28, 'left');
+    if (G.combo >= 2) {
+      ctx.font = `900 ${Math.round(30 + G.comboPop * 18)}px system-ui, sans-serif`;
+      ctx.fillStyle = '#ffd166';
+      line(`${G.combo}x COMBO`, W / 2, top + 54, 'center');
+      ctx.fillStyle = '#fff';
+    }
+    if (now < G.headlineUntil) {
+      ctx.font = '700 15px system-ui, sans-serif';
+      const tw = ctx.measureText(G.headline).width;
+      ctx.fillStyle = 'rgba(160, 20, 20, .9)';
+      ctx.fillRect(W / 2 - tw / 2 - 12, top + 104, tw + 24, 28);
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+      ctx.fillText(G.headline, W / 2, top + 110);
     }
   }
-  if (b.state === "rising"){
-    cx.strokeStyle = COL.amber; cx.lineWidth = 2; cx.globalAlpha = 0.6;
-    for (let y = groundY; y > top; y -= 18){ cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + b.w, y - 18); cx.stroke(); }
-    cx.globalAlpha = 1;
-  }
-  // cracks
-  cx.strokeStyle = "#0d0b1a"; cx.lineWidth = 2;
-  for (const k of b.cracks){
-    const ky = groundY - k.y; if (ky < top) continue;
-    cx.beginPath(); cx.moveTo(x + k.x, ky);
-    let px = x + k.x, py = ky;
-    for (let i=0;i<4;i++){ px += Math.cos(k.a + i)*10; py += Math.sin(k.a + i*1.3)*10; cx.lineTo(px, py); }
-    cx.stroke();
-  }
-}
-function limb(a, b, w, color){
-  cx.strokeStyle = color; cx.lineWidth = w; cx.lineCap = "round";
-  cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x, b.y); cx.stroke();
-}
-function drawMonster(t){
-  const p = pose; if (!p) return;
-  const sw = p.sw, legW = sw*0.5, armW = sw*0.36;
-  const hurt = game && game.hurt > 0;
-  const body = hurt ? "#a8574a" : COL.body;
-  const out = COL.dark;
-  // tail behind the body
-  const tailSide = p.hipMid.x < W/2 ? 1 : -1;
-  cx.fillStyle = body; cx.strokeStyle = out; cx.lineWidth = 4;
-  cx.beginPath();
-  cx.moveTo(p.hipMid.x - sw*0.25, p.hipMid.y);
-  cx.quadraticCurveTo(p.hipMid.x + tailSide*sw*1.3, p.hipMid.y + sw*0.3, p.hipMid.x + tailSide*sw*2.1 + Math.sin(t*2)*sw*0.2, groundY - sw*0.05);
-  cx.quadraticCurveTo(p.hipMid.x + tailSide*sw*1.0, p.hipMid.y + sw*0.75, p.hipMid.x + sw*0.25, p.hipMid.y + sw*0.25);
-  cx.closePath(); cx.fill(); cx.stroke();
-  // back spikes peeking out behind shoulders
-  cx.fillStyle = COL.spike;
-  for (let i=-2;i<=2;i++){
-    const bx = p.shMid.x + i*sw*0.28, by = p.shMid.y + Math.abs(i)*sw*0.12;
-    cx.beginPath(); cx.moveTo(bx - sw*0.13, by); cx.lineTo(bx, by - sw*(0.55 - Math.abs(i)*0.12)); cx.lineTo(bx + sw*0.13, by); cx.closePath(); cx.fill();
-  }
-  // legs
-  for (const [h,k,a] of [[p.lHip,p.lKn,p.lAn],[p.rHip,p.rKn,p.rAn]]){
-    limb(h, k, legW + 8, out); limb(k, a, legW*0.9 + 8, out);
-    limb(h, k, legW, body); limb(k, a, legW*0.9, body);
-    // foot
-    const fw = sw*0.55, fh = sw*0.24;
-    cx.fillStyle = out; cx.beginPath(); cx.roundRect(a.x - fw/2 - 4, a.y - fh*0.3 - 4, fw + 8, fh + 8, 8); cx.fill();
-    cx.fillStyle = body; cx.beginPath(); cx.roundRect(a.x - fw/2, a.y - fh*0.3, fw, fh, 6); cx.fill();
-    cx.fillStyle = COL.ink;
-    for (let c=0;c<3;c++){ const clx = a.x - fw*0.35 + c*fw*0.35; cx.beginPath(); cx.moveTo(clx-4, a.y + fh*0.7); cx.lineTo(clx, a.y + fh*0.7 + 7); cx.lineTo(clx+4, a.y + fh*0.7); cx.fill(); }
-  }
-  // torso
-  const ex = sw*0.18;
-  const ls = {x:p.lSh.x + Math.sign(p.lSh.x - p.rSh.x)*ex, y:p.lSh.y}, rs = {x:p.rSh.x + Math.sign(p.rSh.x - p.lSh.x)*ex, y:p.rSh.y};
-  const lh = {x:p.lHip.x + Math.sign(p.lHip.x - p.rHip.x)*ex*1.4, y:p.lHip.y + sw*0.1}, rh = {x:p.rHip.x + Math.sign(p.rHip.x - p.lHip.x)*ex*1.4, y:p.rHip.y + sw*0.1};
-  cx.fillStyle = body; cx.strokeStyle = out; cx.lineWidth = 5; cx.lineJoin = "round";
-  cx.beginPath(); cx.moveTo(ls.x, ls.y); cx.lineTo(rs.x, rs.y); cx.lineTo(rh.x, rh.y); cx.lineTo(lh.x, lh.y); cx.closePath(); cx.fill(); cx.stroke();
-  // belly plates
-  const bc = mid(p.shMid, p.hipMid);
-  cx.fillStyle = COL.belly;
-  cx.beginPath(); cx.ellipse(bc.x, bc.y + sw*0.08, sw*0.32, Math.max(10, dist(p.shMid, p.hipMid)*0.42), 0, 0, 7); cx.fill();
-  cx.strokeStyle = "rgba(18,58,49,.45)"; cx.lineWidth = 2;
-  for (let i=-1;i<=1;i++){ cx.beginPath(); cx.moveTo(bc.x - sw*0.25, bc.y + i*sw*0.18); cx.lineTo(bc.x + sw*0.25, bc.y + i*sw*0.18); cx.stroke(); }
-  // head
-  const hw = sw*0.85, hh = sw*0.72, hx = p.head.x, hy = p.head.y;
-  const roaring = game && game.roaring > 0;
-  cx.fillStyle = out; cx.beginPath(); cx.roundRect(hx - hw/2 - 5, hy - hh/2 - 5, hw + 10, hh + 10 + (roaring ? hh*0.35 : 0), 14); cx.fill();
-  cx.fillStyle = body; cx.beginPath(); cx.roundRect(hx - hw/2, hy - hh/2, hw, hh + (roaring ? hh*0.35 : 0), 11); cx.fill();
-  // brow and eyes
-  cx.fillStyle = out; cx.fillRect(hx - hw*0.42, hy - hh*0.2, hw*0.84, hh*0.1);
-  cx.fillStyle = COL.eye;
-  cx.beginPath(); cx.arc(hx - hw*0.2, hy, hw*0.1, 0, 7); cx.arc(hx + hw*0.2, hy, hw*0.1, 0, 7); cx.fill();
-  cx.fillStyle = out; cx.beginPath(); cx.arc(hx - hw*0.2, hy + 1, hw*0.04, 0, 7); cx.arc(hx + hw*0.2, hy + 1, hw*0.04, 0, 7); cx.fill();
-  // mouth
-  const my = hy + hh*0.3;
-  if (roaring){
-    cx.fillStyle = "#3a0f16"; cx.beginPath(); cx.roundRect(hx - hw*0.32, my - 2, hw*0.64, hh*0.45, 6); cx.fill();
-    cx.globalAlpha = Math.min(1, game.roaring);
-    const grd = cx.createRadialGradient(hx, my + hh*0.2, 4, hx, my + hh*0.2, W*0.6);
-    grd.addColorStop(0, "rgba(255,195,92,.55)"); grd.addColorStop(1, "rgba(255,195,92,0)");
-    cx.fillStyle = grd; cx.beginPath(); cx.arc(hx, my + hh*0.2, W*0.6, 0, 7); cx.fill(); cx.globalAlpha = 1;
-  }
-  cx.fillStyle = COL.ink;
-  for (let i=0;i<5;i++){ const tx = hx - hw*0.3 + i*hw*0.15; cx.beginPath(); cx.moveTo(tx, my); cx.lineTo(tx + hw*0.06, my + hh*0.13); cx.lineTo(tx + hw*0.12, my); cx.fill(); }
-  // arms on top of torso
-  const R = fistR();
-  for (const [s, e, w, side] of [[p.lSh,p.lEl,p.lWr,"l"],[p.rSh,p.rEl,p.rWr,"r"]]){
-    limb(s, e, armW + 8, out); limb(e, w, armW*0.9 + 8, out);
-    limb(s, e, armW, body); limb(e, w, armW*0.9, body);
-    const fast = wrSpeed[side] > 0.6;
-    cx.fillStyle = out; cx.beginPath(); cx.arc(w.x, w.y, R + 4, 0, 7); cx.fill();
-    cx.fillStyle = fast ? COL.bodyLit : body; cx.beginPath(); cx.arc(w.x, w.y, R, 0, 7); cx.fill();
-    cx.strokeStyle = out; cx.lineWidth = 2;
-    for (let k=-1;k<=1;k++){ cx.beginPath(); cx.moveTo(w.x - R*0.5, w.y + k*R*0.35); cx.lineTo(w.x + R*0.5, w.y + k*R*0.35); cx.stroke(); }
-    if (fast){ cx.strokeStyle = "rgba(246,239,226,.5)"; cx.lineWidth = 3; cx.beginPath(); cx.arc(w.x, w.y, R + 9, 0, 7); cx.stroke(); }
-  }
-  if (guardOn && phase === "play"){
-    cx.strokeStyle = "rgba(255,195,92,.85)"; cx.lineWidth = 5;
-    cx.beginPath(); cx.arc(p.head.x, p.head.y + hh*0.1, sw*1.1, Math.PI*1.05, Math.PI*1.95); cx.stroke();
-  }
-}
-function drawTank(tk){
-  const y = groundY;
-  cx.save(); cx.translate(tk.x, y);
-  if (tk.dead){ cx.restore(); return; }
-  cx.fillStyle = COL.tankDark; cx.beginPath(); cx.roundRect(-tk.w/2, -tk.h*0.45, tk.w, tk.h*0.45, tk.h*0.2); cx.fill();
-  cx.fillStyle = COL.tank; cx.fillRect(-tk.w*0.42, -tk.h*0.8, tk.w*0.84, tk.h*0.4);
-  cx.beginPath(); cx.roundRect(-tk.w*0.2, -tk.h*1.1, tk.w*0.4, tk.h*0.35, 4); cx.fill();
-  // barrel aims at the monster's chest
-  let ang = -Math.PI/2;
-  if (pose) ang = Math.atan2(pose.chest.y - (y - tk.h), pose.chest.x - tk.x);
-  cx.save(); cx.translate(0, -tk.h*0.95); cx.rotate(ang); cx.fillStyle = COL.tankDark; cx.fillRect(0, -3, tk.w*0.55, 6); cx.restore();
-  if (tk.fire < 0.5){ cx.fillStyle = COL.coral; cx.beginPath(); cx.arc(0, -tk.h*1.2, 4, 0, 7); cx.fill(); }
-  cx.restore();
-}
-function drawHeli(hc, t){
-  cx.save(); cx.translate(hc.x, hc.y);
-  if (hc.dead) cx.rotate(hc.deadT*6);
-  const r = hc.r;
-  cx.fillStyle = COL.heli;
-  cx.beginPath(); cx.ellipse(0, 0, r, r*0.55, 0, 0, 7); cx.fill();
-  cx.fillRect(-hc.dir*r*0.6 - (hc.dir > 0 ? r*1.4 : 0), -r*0.12, r*1.4, r*0.22);
-  cx.fillStyle = "#a9d6e5"; cx.beginPath(); cx.ellipse(hc.dir*r*0.45, -r*0.05, r*0.35, r*0.3, 0, 0, 7); cx.fill();
-  cx.strokeStyle = "#cfd3e0"; cx.lineWidth = 3;
-  const sp = Math.sin(t*40)*r*1.4;
-  cx.beginPath(); cx.moveTo(-sp, -r*0.7); cx.lineTo(sp, -r*0.7); cx.stroke();
-  if (hc.warn && !hc.dead && Math.floor(t*10)%2){ cx.fillStyle = COL.coral; cx.beginPath(); cx.arc(0, r*0.55, 6, 0, 7); cx.fill(); }
-  cx.restore();
-}
-function drawShots(){
-  for (const p of game.shots){
-    if (p.kind === "missile"){
-      const a = Math.atan2(p.y1 - p.y0, p.x1 - p.x0);
-      cx.save(); cx.translate(p.x, p.y); cx.rotate(a);
-      cx.fillStyle = "rgba(255,195,92,.5)"; cx.fillRect(-34, -3, 22, 6);
-      cx.fillStyle = COL.ink; cx.fillRect(-12, -4, 22, 8); cx.fillStyle = COL.coral; cx.fillRect(10, -4, 6, 8);
-      cx.restore();
-    } else {
-      cx.fillStyle = COL.coral; cx.beginPath(); cx.arc(p.x, p.y, 7, 0, 7); cx.fill();
-      cx.fillStyle = "rgba(255,106,77,.3)"; cx.beginPath(); cx.arc(p.x, p.y, 13, 0, 7); cx.fill();
-    }
-  }
-}
-function drawFx(){
-  for (const r of game.rings){
-    const u = r.t/0.5;
-    cx.strokeStyle = `rgba(255,195,92,${1-u})`; cx.lineWidth = 6*(1-u) + 1;
-    cx.beginPath(); cx.ellipse(r.x, r.y, r.r*u, r.r*u*0.18, 0, 0, 7); cx.stroke();
-  }
-  for (const p of game.parts){
-    cx.globalAlpha = Math.min(1, p.life*2);
-    cx.fillStyle = p.color;
-    if (p.kind === "dust"){ cx.beginPath(); cx.arc(p.x, p.y, p.s, 0, 7); cx.fill(); }
-    else if (p.kind === "chunk"){ cx.save(); cx.translate(p.x, p.y); cx.rotate(p.rot); cx.fillRect(-p.s/2, -p.s/2, p.s, p.s); cx.restore(); }
-    else { cx.fillRect(p.x, p.y, p.s, p.s); }
-  }
-  cx.globalAlpha = 1;
-  cx.textAlign = "center"; cx.font = `${Math.round(clamp(H*0.035, 18, 34))}px "Lilita One", sans-serif`;
-  for (const t of game.pops){
-    cx.globalAlpha = 1 - t.t/1.1;
-    cx.fillStyle = "#000"; cx.fillText(t.text, t.x, t.y + 2);
-    cx.fillStyle = t.color; cx.fillText(t.text, t.x, t.y);
-  }
-  cx.globalAlpha = 1;
-}
-function drawPip(){
-  if (demo || !stream || video.readyState < 2) return;
-  const pw = Math.min(W*0.26, 140), ph = pw*(video.videoHeight/video.videoWidth || 1.33);
-  const x = W - pw - 16, y = H*0.17;
-  cx.save();
-  cx.globalAlpha = 0.85;
-  cx.beginPath(); cx.roundRect(x, y, pw, ph, 10); cx.clip();
-  cx.translate(x + pw, y); cx.scale(-1, 1);
-  cx.drawImage(video, 0, 0, pw, ph);
-  cx.restore();
-  if (rawSm){
-    cx.fillStyle = COL.amber;
-    for (const k of ["nose","lWr","rWr","lAn","rAn","lSh","rSh","lHip","rHip","lKn","rKn"]){
-      const q = rawSm[L[k]]; if (q.v < 0.5) continue;
-      cx.beginPath(); cx.arc(x + (1 - q.x)*pw, y + q.y*ph, 2.5, 0, 7); cx.fill();
-    }
-  }
-  cx.strokeStyle = "rgba(255,195,92,.4)"; cx.lineWidth = 1; cx.beginPath(); cx.roundRect(x, y, pw, ph, 10); cx.stroke();
-}
-function render(t){
-  cx.save();
-  if (game && game.shake > 0) cx.translate(rand(-1,1)*game.shake, rand(-1,1)*game.shake);
-  drawSky(t);
-  if (game){
-    for (const b of game.city) drawBuilding(b);
-    for (const tk of game.tanks) drawTank(tk);
-  }
-  if (phase === "calib" && pose && !calib.ok){
-    // preview the raw skeleton so the player can line up
-    cx.strokeStyle = "rgba(255,195,92,.8)"; cx.lineWidth = 4; cx.lineCap = "round";
-    const r = pose.raw;
-    const bones = [["lSh","rSh"],["lSh","lEl"],["lEl","lWr"],["rSh","rEl"],["rEl","rWr"],["lSh","lHip"],["rSh","rHip"],["lHip","rHip"],["lHip","lKn"],["lKn","lAn"],["rHip","rKn"],["rKn","rAn"]];
-    for (const [a,b] of bones){ if (r[a].v > 0.4 && r[b].v > 0.4){ cx.beginPath(); cx.moveTo(r[a].x, r[a].y); cx.lineTo(r[b].x, r[b].y); cx.stroke(); } }
-    if (r.nose.v > 0.4){ cx.beginPath(); cx.arc(r.nose.x, r.nose.y, 14, 0, 7); cx.stroke(); }
-  } else if ((phase === "play" || phase === "pause" || phase === "calib") && calib.ok) {
-    drawMonster(t);
-  }
-  if (game){
-    for (const hc of game.helis) drawHeli(hc, t);
-    drawShots(); drawFx();
-  }
-  cx.restore();
-  if (game && game.hurt > 0){ cx.fillStyle = `rgba(255,106,77,${game.hurt*0.6})`; cx.fillRect(0,0,W,H); }
-  if (phase === "play" || phase === "calib") drawPip();
-}
 
-/* ---------- loop ---------- */
-function frame(now){
+  // ---------- flow ----------
+  function startGame(useCamera) {
+    G.useCamera = useCamera;
+    G.round = 0;
+    G.score = 0;
+    G.totals = zeroStats();
+    startRound();
+  }
+
+  function startRound() {
+    G.round++;
+    city = makeCity(1000 + G.round * 77 + Math.floor(Math.random() * 1e6));
+    Object.assign(mon, { x: 0, z: 0, yaw: 0, speed: 0 });
+    G.roundStats = zeroStats();
+    G.bonusMs = 0;
+    G.combo = 0;
+    G.particles = [];
+    G.roundStart = performance.now();
+    G.roundEnd = G.roundStart + T.roundMs;
+    G.state = 'round';
+    show(null);
+  }
+
+  function endRound(now) {
+    G.roundStats.activeMs = now - G.roundStart;
+    for (const k of Object.keys(G.totals)) G.totals[k] += G.roundStats[k];
+    if (G.round >= T.rounds) { G.state = 'summary'; renderSummary(); show('summary'); return; }
+    G.state = 'rest';
+    G.restUntil = now + T.restMs;
+    $('restTitle').textContent = `Round ${G.round} complete`;
+    $('restStats').innerHTML = statRows(G.roundStats);
+    show('rest');
+  }
+
+  const fmtMin = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
+  function statRows(s) {
+    return [
+      ['Buildings dropped', s.buildings], ['Score', s.score.toLocaleString()], ['Steps', s.steps],
+      ['Stomps', s.stomps], ['Punches', s.punches], ['Hooks', s.hooks], ['Work time', fmtMin(s.activeMs)],
+    ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+  }
+
+  function renderSummary() {
+    const t = G.totals;
+    $('sumStats').innerHTML = statRows(t);
+    const lines = [];
+    const n = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
+    const restMin = ((T.rounds - 1) * T.restMs) / 60000;
+    lines.push(`<p><b>Conditioning:</b> ${fmtMin(t.activeMs)} of work across ${T.rounds} rounds with ${restMin} minute${restMin === 1 ? '' : 's'} of rest. Marching ${n(t.steps, 'step')} between bursts is low-intensity steady state.</p>`);
+    if (t.stomps) lines.push(`<p><b>Single-leg power:</b> ${n(t.stomps, 'stomp')}, each a knee drive into a forceful landing.</p>`);
+    if (t.punches + t.hooks) lines.push(`<p><b>Upper-body power:</b> ${t.punches} straight punch${t.punches === 1 ? '' : 'es'} and ${n(t.hooks, 'hook')} for rotational speed.</p>`);
+    $('payoff').innerHTML = lines.join('');
+  }
+
+  function show(id) {
+    for (const s of ['title', 'rest', 'summary']) $(s).hidden = s !== id;
+    if (id) note('');
+  }
+
+  function note(msg, ms = 6000) {
+    const el = $('note');
+    el.textContent = msg;
+    el.hidden = !msg;
+    clearTimeout(note.t);
+    if (msg && ms) note.t = setTimeout(() => { el.hidden = true; }, ms);
+  }
+
+  // Show only the touch buttons this game uses.
+  const DEMO_BUTTONS = ['Jab', 'Cross', 'Hook', 'Stomp'];
+  function enableTouch() {
+    engine.enable_demo($('demo'));
+    const bar = document.querySelector('#demo .re-demo-buttons');
+    if (!bar) return;
+    for (const b of bar.querySelectorAll('button')) b.hidden = !DEMO_BUTTONS.includes(b.textContent.trim());
+    bar.style.gridTemplateColumns = `repeat(${DEMO_BUTTONS.length}, 1fr)`;
+  }
+
+  $('playDemo').addEventListener('click', () => {
+    enableTouch();
+    startGame(false);
+    note('Left zone: tap to march, double-tap and hold to run. Right zone: drag to turn. Buttons: Jab, Cross, Hook, Stomp.', 7000);
+  });
+
+  $('playCamera').addEventListener('click', async () => {
+    show(null);
+    $('pip').style.display = 'block';
+    note('Starting camera...', 0);
+    try {
+      await engine.start('living_room');
+    } catch (err) {
+      $('pip').style.display = 'none';
+      note('Camera unavailable: ' + err.message + '. Using touch controls.');
+      enableTouch();
+      startGame(false);
+      return;
+    }
+    const off = engine.on('calibration', (s) => note(s.prompt, 0));
+    if (!engine.is_calibrated()) await engine.calibrate('living_room').catch(() => {});
+    off();
+    const missing = ['step', 'strike', 'stomp'].filter((e) => !RE.detectors.has(e));
+    note(missing.length ? 'Camera turning works now. Marching, punches and stomps arrive with the next engine update.' : 'Calibrated. Go wreck something.', 7000);
+    startGame(true);
+  });
+
+  $('skipRest').addEventListener('click', () => { if (G.state === 'rest') startRound(); });
+  $('again').addEventListener('click', () => { show('title'); G.state = 'title'; });
+
+  // ---------- loop ----------
+  city = makeCity(42);
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt, now);
+    render(now);
+    requestAnimationFrame(frame);
+  }
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - (lastFrame || now))/1000); lastFrame = now;
-  if (phase === "calib" || phase === "play" || phase === "pause") detect(now);
-  if (phase === "calib" && !calib.ok){
-    if (updateCalib(dt)){ $("calibScreen").hidden = true; beginPlay(); }
-  }
-  if (phase === "play") update(dt);
-  render(now/1000);
-}
 
-/* ---------- flow ---------- */
-function setStatus(text, isErr){ const s = $("status"); s.textContent = text; s.classList.toggle("err", !!isErr); }
-let wakeLock = null;
-async function keepAwake(){ try{ wakeLock = await navigator.wakeLock?.request("screen"); }catch(e){} }
-
-async function start(isDemo){
-  if (!AC) initAudio(); else if (AC.state === "suspended") AC.resume();
-  demo = isDemo;
-  $("startBtn").disabled = $("demoBtn").disabled = true;
-  try{
-    if (!demo){
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia){
-        throw new Error("insecure");
-      }
-      if (!landmarker) await loadTracker();
-      if (!stream) await startCamera();
-    }
-    keepAwake();
-    $("startScreen").hidden = true; $("endScreen").hidden = true;
-    newGame(); tipIdx = 0;
-    calib.ok = false; calibHold = 0; calibSamples = []; rawSm = null; pose = null;
-    if (demo){
-      // demo skips calibration with a fixed mapping
-      ingest(demoPose(0), performance.now());
-      calibSamples = [{cx: (pose.raw.lAn.x + pose.raw.rAn.x)/2, gy: Math.max(pose.raw.lAn.y, pose.raw.rAn.y), h: Math.max(pose.raw.lAn.y, pose.raw.rAn.y) - pose.raw.nose.y}];
-      finishCalib(); beginPlay();
-    } else {
-      phase = "calib"; $("calibScreen").hidden = false;
-    }
-  }catch(e){
-    let msg = "Something went wrong starting the game. Reload and try again.";
-    if (e && e.message === "insecure") msg = "The camera only works when this page is opened from an https address in Safari. See the setup notes that came with the game.";
-    else if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) msg = "Camera access was blocked. Allow the camera for this site in Safari settings, then reload.";
-    else if (e && e.name === "NotFoundError") msg = "No camera found on this device.";
-    else if (!landmarker) msg = "The body tracker can't load in this viewer. Open the game from its https link in Safari instead. Watch demo works here.";
-    setStatus(msg, true);
-  }finally{
-    $("startBtn").disabled = $("demoBtn").disabled = false;
-  }
-}
-function beginPlay(){
-  phase = "play"; $("hud").hidden = false;
-  tip(demo ? "Demo mode. Start a real round to control the monster." : "Smash the city!");
-  updateHud();
-}
-function endGame(survived){
-  phase = "over"; $("hud").hidden = true; $("banner").hidden = true;
-  const s = game.stats;
-  $("endTitle").textContent = survived ? "City flattened" : "The army got you";
-  $("endSub").textContent = survived ? `You survived the full ${ROUND_SECONDS/60} minutes.` : `You lasted ${Math.floor(game.elapsed/60)}:${String(Math.floor(game.elapsed%60)).padStart(2,"0")}. Guard up or slip the shots.`;
-  const items = [["Score", game.score.toLocaleString()],["Buildings", s.buildings],["Punches", s.punches],["Stomps", s.stomps],["Tanks", s.tanks],["Helicopters", s.helis],["Blocks", s.blocks],["Dodges", s.dodges],["Roars", s.roars]];
-  $("stats").innerHTML = items.map(([k,v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("");
-  $("endScreen").hidden = false;
-  try{ wakeLock?.release(); }catch(e){}
-}
-
-$("startBtn").addEventListener("click", () => start(false));
-$("demoBtn").addEventListener("click", () => start(true));
-$("againBtn").addEventListener("click", () => start(demo));
-cv.addEventListener("click", () => {
-  if (phase === "play"){ phase = "pause"; $("pauseScreen").hidden = false; }
-});
-$("resumeBtn").addEventListener("click", () => { $("pauseScreen").hidden = true; phase = "play"; lastFrame = 0; });
-$("recenterBtn").addEventListener("click", () => {
-  $("pauseScreen").hidden = true;
-  if (demo){ phase = "play"; return; }
-  calib.ok = false; calibHold = 0; calibSamples = []; rawSm = null;
-  phase = "calib"; $("calibScreen").hidden = false;
-});
-$("quitBtn").addEventListener("click", () => { $("pauseScreen").hidden = true; endGame(true); });
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden && phase === "play"){ phase = "pause"; $("pauseScreen").hidden = false; }
-  if (!document.hidden && (phase === "play" || phase === "pause" || phase === "calib")) keepAwake();
-});
-
-// expose internals for testing only
-window.__stomp = { get pose(){ return pose; }, ingest, demoPose, footStomps, feet, get calib(){ return calib; }, finishCalib, setCalibSamples(s){ calibSamples = s; }, newGame, get game(){ return game; }, set phase(v){ phase = v; } };
-
-resize();
-requestAnimationFrame(frame);
+  // test hook for automated checks
+  window.__game = { G, mon, get city() { return city; }, T };
 })();
 </script>
 </body>

@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stomp City</title>
+<style>
+  :root { --ink: #fff; --muted: #c9d1dd; --panel: rgba(12, 16, 24, .9); --accent: #7cff6b; --warn: #ffd166; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0b0f18; color: var(--ink); font: 16px/1.4 system-ui, -apple-system, sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #demo { position: fixed; inset: 0; z-index: 2; }
+  #demo .re-demo { top: auto; height: 58%; }
+  #demo .re-demo-buttons button[hidden] { display: none; }
+  #pip { position: fixed; right: 10px; bottom: 10px; width: 26vw; max-width: 160px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; border: 2px solid rgba(255,255,255,.6); transform: scaleX(-1); z-index: 3; display: none; background: #000; }
+  .screen { position: fixed; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(6, 9, 15, .72); }
+  .screen[hidden] { display: none; }
+  .card { width: min(440px, 100%); background: var(--panel); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 22px 20px; text-align: center; }
+  .card h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: .5px; color: var(--accent); text-shadow: 0 3px 0 #1d5c17; }
+  .card h2 { margin: 0 0 8px; font-size: 24px; }
+  .card p { margin: 6px 0; color: var(--muted); }
+  .card ul { text-align: left; margin: 10px 0 14px; padding-left: 20px; color: var(--muted); }
+  .card li { margin: 3px 0; }
+  .btns { display: grid; gap: 10px; margin-top: 14px; }
+  button { font: 700 17px system-ui, sans-serif; border: 0; border-radius: 12px; padding: 14px 16px; min-height: 50px; cursor: pointer; color: #08210a; background: var(--accent); }
+  button.secondary { background: #2a3344; color: var(--ink); }
+  .big { font-size: 56px; font-weight: 800; margin: 6px 0; font-variant-numeric: tabular-nums; }
+  table.stats { width: 100%; border-collapse: collapse; margin: 10px 0; font-variant-numeric: tabular-nums; }
+  table.stats td { padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; }
+  table.stats td:last-child { text-align: right; font-weight: 700; }
+  .payoff { text-align: left; font-size: 14px; }
+  #note { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 64px); transform: translateX(-50%); z-index: 4; background: rgba(0,0,0,.6); padding: 6px 12px; border-radius: 10px; font-size: 13px; color: var(--muted); max-width: 92vw; text-align: center; pointer-events: none; }
+  #note[hidden] { display: none; }
+</style>
+<!-- rep-engine:inline -->
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="demo"></div>
+<video id="pip" playsinline muted></video>
+<div id="note" hidden></div>
+
+<div id="title" class="screen">
+  <div class="card">
+    <h1>STOMP CITY</h1>
+    <p>You are 30 meters of bad news. The city has excellent insurance.</p>
+    <ul>
+      <li>March in place to stomp forward</li>
+      <li>Lean left or right to turn</li>
+      <li>Punch straight to smash what's in front</li>
+      <li>Hook to swipe a wide arc</li>
+      <li>Stomp (knee up, slam down) to flatten everything nearby</li>
+    </ul>
+    <p>3 rounds of 3 minutes. Each building you drop adds time, up to 5 minutes a round. 60 seconds of rest between rounds.</p>
+    <div class="btns">
+      <button id="playDemo">Play with touch controls</button>
+      <button id="playCamera" class="secondary">Play with camera</button>
+    </div>
+  </div>
+</div>
+
+<div id="rest" class="screen" hidden>
+  <div class="card">
+    <h2 id="restTitle">Round 1 complete</h2>
+    <p>The city is regenerating. Shake out your legs and breathe.</p>
+    <div class="big" id="restTimer">60</div>
+    <table class="stats" id="restStats"></table>
+    <div class="btns"><button id="skipRest" class="secondary">Start next round now</button></div>
+  </div>
+</div>
+
+<div id="summary" class="screen" hidden>
+  <div class="card">
+    <h2>City flattened</h2>
+    <table class="stats" id="sumStats"></table>
+    <div class="payoff" id="payoff"></div>
+    <div class="btns"><button id="again">Play again</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const RE = window.RepEngine;
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('game');
+  const ctx = canvas.getContext('2d');
+
+  // ---------- tuning (game side; engine thresholds live in engine/config.js) ----------
+  const T = {
+    roundMs: 180000,       // 3-minute rounds
+    roundCapMs: 300000,    // time bonuses cap a round near 5 minutes
+    restMs: 60000,         // rest between rounds
+    rounds: 3,
+    walkSpeed: 13,         // units per second at 110 steps per minute
+    runBoost: 1.6,
+    turnRate: 80,          // degrees per second at full lean
+    leanDeadzone: 0.06,
+    leanFull: 0.25,
+    monsterRadius: 6,
+    punch: { range: 20, cone: 35, damage: 40 },
+    hook: { range: 22, cone: 75, damage: 28 },
+    stomp: { radius: 18, damage: 50 },
+    bumpDamage: 6,         // walking into a building still hurts it
+    comboWindowMs: 3000,
+    bonusMs: 1000,         // per building
+    comboBonusMs: 1000,    // extra per building once the combo reaches 3
+  };
+
+  const engine = RE.create({ video: $('pip'), preset: 'living_room' });
+
+  // ---------- seeded random ----------
+  function rng(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- city ----------
+  const BLOCK = 40, STREET = 16, CELL = BLOCK + STREET, GRID = 6;
+  const PALETTE = [[214, 196, 170], [176, 190, 205], [205, 160, 140], [160, 175, 150], [222, 210, 190], [150, 160, 185], [196, 150, 160]];
+  let city = { buildings: [], blocks: [] };
+
+  function makeCity(seed) {
+    const r = rng(seed);
+    const buildings = [];
+    const blocks = [];
+    for (let gx = -GRID; gx <= GRID; gx++) {
+      for (let gz = -GRID; gz <= GRID; gz++) {
+        const cx = gx * CELL, cz = gz * CELL;
+        blocks.push({ x0: cx - BLOCK / 2, x1: cx + BLOCK / 2, z0: cz - BLOCK / 2, z1: cz + BLOCK / 2, park: gx === 0 && gz === 0 });
+        if (gx === 0 && gz === 0) continue; // start in an empty plaza
+        for (let i = 0; i < 2; i++) {
+          for (let j = 0; j < 2; j++) {
+            if (r() < 0.12) continue;
+            const w = 13 + r() * 5, d = 13 + r() * 5;
+            const bx = cx + (i ? 1 : -1) * BLOCK / 4, bz = cz + (j ? 1 : -1) * BLOCK / 4;
+            const dist = Math.hypot(gx, gz);
+            const h = 10 + r() * 22 + (dist < 3 ? 0 : r() * 30);
+            const col = PALETTE[Math.floor(r() * PALETTE.length)];
+            buildings.push({ x: bx, z: bz, hx: w / 2, hz: d / 2, h, hNow: h, hp: h * 2, maxHp: h * 2, col, state: 'up', fallT: 0, flash: 0 });
+          }
+        }
+      }
+    }
+    return { buildings, blocks };
+  }
+
+  // ---------- monster ----------
+  const mon = { x: 0, z: 0, yaw: 0, speed: 0, legPhase: 0, punchT: 0, punchHand: 1, hookT: 0, stompT: 0 };
+
+  const fwd = (yaw) => ({ x: Math.sin(yaw), z: Math.cos(yaw) });
+  const right = (yaw) => ({ x: Math.cos(yaw), z: -Math.sin(yaw) });
+
+  // ---------- game state ----------
+  const G = {
+    state: 'title', round: 0, roundStart: 0, roundEnd: 0, bonusMs: 0, restUntil: 0,
+    score: 0, combo: 0, lastDropAt: -1e9, comboPop: 0, headline: '', headlineUntil: 0,
+    shake: 0, particles: [], useCamera: false,
+    roundStats: null, totals: null,
+  };
+  const zeroStats = () => ({ steps: 0, stomps: 0, punches: 0, hooks: 0, buildings: 0, score: 0, activeMs: 0 });
+
+  const HEADLINES = [
+    'Zoning board calls emergency meeting',
+    'Realtors now describing the area as open plan',
+    'Local man: I literally just parked there',
+    'Insurance adjusters request hazard pay',
+    'Mayor urges calm while sprinting',
+    'Rooftop bar announces permanent closure, and a crater',
+    'Commute times improve as roads no longer lead anywhere',
+    'City council votes to rename itself Gravel',
+  ];
+
+  // ---------- engine events ----------
+  engine.on('step', () => { if (G.state === 'round') { G.roundStats.steps++; mon.legPhase += Math.PI; } });
+  engine.on('strike', (e) => {
+    if (G.state !== 'round') return;
+    if (e.type === 'hook') { G.roundStats.hooks++; mon.hookT = 1; attack(T.hook, e.power || 1); }
+    else { G.roundStats.punches++; mon.punchT = 1; mon.punchHand = e.hand === 'left' ? -1 : 1; attack(T.punch, e.power || 1); }
+  });
+  engine.on('stomp', (e) => {
+    if (G.state !== 'round') return;
+    G.roundStats.stomps++;
+    mon.stompT = 1;
+    G.shake = 1;
+    for (const b of city.buildings) {
+      if (b.state !== 'up') continue;
+      const d = Math.hypot(b.x - mon.x, b.z - mon.z) - Math.max(b.hx, b.hz);
+      if (d < T.stomp.radius) damage(b, T.stomp.damage * (e.power || 1) * (1 - Math.max(0, d) / T.stomp.radius * 0.5));
+    }
+    dust(mon.x, 1, mon.z, 24, [170, 160, 140]);
+  });
+
+  function attack(spec, power) {
+    const f = fwd(mon.yaw);
+    for (const b of city.buildings) {
+      if (b.state !== 'up') continue;
+      const vx = b.x - mon.x, vz = b.z - mon.z;
+      const dist = Math.hypot(vx, vz);
+      const surface = dist - Math.max(b.hx, b.hz);
+      if (surface > spec.range) continue;
+      const ang = Math.acos(Math.max(-1, Math.min(1, (vx * f.x + vz * f.z) / (dist || 1)))) * 180 / Math.PI;
+      if (ang <= spec.cone || surface < 3) damage(b, spec.damage * power);
+    }
+  }
+
+  function damage(b, amount) {
+    b.hp -= amount;
+    b.flash = 1;
+    if (b.hp <= 0 && b.state === 'up') topple(b);
+  }
+
+  function topple(b) {
+    b.state = 'falling';
+    b.fallT = 0;
+    const now = performance.now();
+    G.combo = now - G.lastDropAt <= T.comboWindowMs ? G.combo + 1 : 1;
+    G.lastDropAt = now;
+    G.comboPop = 1;
+    const pts = Math.round(b.h * 10 * (1 + (G.combo - 1) * 0.25));
+    G.score += pts;
+    G.roundStats.score += pts;
+    G.roundStats.buildings++;
+    // time bonus, capped so a round never runs past the cap
+    let bonus = T.bonusMs + (G.combo >= 3 ? T.comboBonusMs : 0);
+    bonus = Math.min(bonus, T.roundCapMs - T.roundMs - G.bonusMs);
+    if (bonus > 0) { G.bonusMs += bonus; G.roundEnd += bonus; }
+    if (G.combo === 3 || G.combo === 6 || G.combo === 10) {
+      G.headline = HEADLINES[Math.floor(Math.random() * HEADLINES.length)];
+      G.headlineUntil = now + 3500;
+    }
+    dust(b.x, b.h * 0.6, b.z, 30, b.col);
+  }
+
+  function dust(x, y, z, n, col) {
+    for (let i = 0; i < n; i++) {
+      G.particles.push({ x: x + (Math.random() - 0.5) * 10, y: y + Math.random() * 6, z: z + (Math.random() - 0.5) * 10,
+        vx: (Math.random() - 0.5) * 20, vy: 8 + Math.random() * 18, vz: (Math.random() - 0.5) * 20, life: 1, col });
+    }
+    if (G.particles.length > 600) G.particles.splice(0, G.particles.length - 600);
+  }
+
+  // ---------- update ----------
+  function update(dt, now) {
+    if (G.state === 'round') {
+      const s = engine.signals();
+      // march: speed follows cadence; high cadence counts as running
+      const cadence = s.cadence_spm || 0;
+      let target = Math.min(cadence / 110, 1.4) * T.walkSpeed;
+      if (cadence >= 150) target *= T.runBoost;
+      mon.speed += (target - mon.speed) * Math.min(1, dt * 3);
+      // lean: deadzone, then proportional turn rate
+      const lean = s.lean || 0;
+      const mag = Math.max(0, Math.abs(lean) - T.leanDeadzone) / (T.leanFull - T.leanDeadzone);
+      mon.yaw += Math.sign(lean) * Math.min(1, mag) * T.turnRate * Math.PI / 180 * dt;
+
+      const f = fwd(mon.yaw);
+      const nx = mon.x + f.x * mon.speed * dt, nz = mon.z + f.z * mon.speed * dt;
+      const hit = blocking(nx, nz);
+      if (!hit) { mon.x = nx; mon.z = nz; }
+      else if (mon.speed > 2 && now - (hit.bumpAt || 0) > 450) { hit.bumpAt = now; damage(hit, T.bumpDamage); G.shake = Math.max(G.shake, 0.3); }
+      const lim = GRID * CELL + BLOCK / 2;
+      mon.x = Math.max(-lim, Math.min(lim, mon.x));
+      mon.z = Math.max(-lim, Math.min(lim, mon.z));
+      if (mon.speed > 0.5) mon.legPhase += dt * mon.speed * 0.6;
+
+      if (now >= G.roundEnd) endRound(now);
+    }
+    if (G.state === 'rest') {
+      const left = Math.max(0, G.restUntil - now);
+      $('restTimer').textContent = Math.ceil(left / 1000);
+      if (left <= 0) startRound();
+    }
+
+    for (const b of city.buildings) {
+      if (b.flash > 0) b.flash = Math.max(0, b.flash - dt * 4);
+      if (b.state === 'falling') {
+        b.fallT += dt / 0.7;
+        b.hNow = b.h * (1 - 0.85 * Math.min(1, b.fallT));
+        if (b.fallT >= 1) { b.state = 'rubble'; b.hNow = Math.max(2, b.h * 0.12); }
+      }
+    }
+    for (const p of G.particles) {
+      p.vy -= 30 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.life -= dt * 0.7;
+      if (p.y < 0) { p.y = 0; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
+    }
+    G.particles = G.particles.filter((p) => p.life > 0);
+    mon.punchT = Math.max(0, mon.punchT - dt * 4);
+    mon.hookT = Math.max(0, mon.hookT - dt * 3);
+    mon.stompT = Math.max(0, mon.stompT - dt * 3);
+    G.shake = Math.max(0, G.shake - dt * 2.5);
+    G.comboPop = Math.max(0, G.comboPop - dt * 1.5);
+    if (G.state === 'round' && now - G.lastDropAt > T.comboWindowMs) G.combo = 0;
+  }
+
+  function blocking(x, z) {
+    for (const b of city.buildings) {
+      if (b.state !== 'up') continue;
+      if (Math.abs(x - b.x) < b.hx + T.monsterRadius && Math.abs(z - b.z) < b.hz + T.monsterRadius) return b;
+    }
+    return null;
+  }
+
+  // ---------- 3D rendering (plain canvas) ----------
+  const NEAR = 1, FOG = 420;
+  const SKY = [126, 170, 214];
+  let W = 0, H = 0, F = 0, cam = null;
+
+  function setCamera() {
+    const f = fwd(mon.yaw);
+    const back = 54, up = 46, pitch = 0.52;
+    const sx = (Math.random() - 0.5) * G.shake * 3, sy = (Math.random() - 0.5) * G.shake * 3;
+    cam = { x: mon.x - f.x * back + sx, y: up + sy, z: mon.z - f.z * back, yaw: mon.yaw, cp: Math.cos(pitch), sp: Math.sin(pitch) };
+    cam.cy = Math.cos(cam.yaw); cam.syaw = Math.sin(cam.yaw);
+  }
+
+  // world -> camera space {x (right), y (up), z (forward)}
+  function toCam(x, y, z) {
+    const dx = x - cam.x, dy = y - cam.y, dz = z - cam.z;
+    const xr = dx * cam.cy - dz * cam.syaw;
+    const zr = dx * cam.syaw + dz * cam.cy;
+    return { x: xr, y: dy * cam.cp + zr * cam.sp, z: -dy * cam.sp + zr * cam.cp };
+  }
+
+  // clip a camera-space polygon against the near plane, then project
+  function project(poly) {
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const ain = a.z >= NEAR, bin = b.z >= NEAR;
+      if (ain) out.push(a);
+      if (ain !== bin) {
+        const t = (NEAR - a.z) / (b.z - a.z);
+        out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: NEAR });
+      }
+    }
+    if (out.length < 3) return null;
+    return out.map((p) => ({ x: W / 2 + (F * p.x) / p.z, y: H / 2 - (F * p.y) / p.z }));
+  }
+
+  function shade(col, k, depth) {
+    const fog = Math.min(1, Math.max(0, depth / FOG));
+    const c = col.map((v, i) => Math.round(Math.min(255, v * k) * (1 - fog) + SKY[i] * fog));
+    return `rgb(${c[0]},${c[1]},${c[2]})`;
+  }
+
+  function fillPoly(pts, color) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  // Oriented box: center (x, z), base y0, height h, half sizes hx/hz, yaw.
+  // Pushes visible faces with a depth for the painter's sort.
+  function boxFaces(out, o) {
+    const c = Math.cos(o.yaw || 0), s = Math.sin(o.yaw || 0);
+    const R = { x: c, z: -s }, Fw = { x: s, z: c };
+    const y0 = o.y0 || 0, y1 = y0 + o.h;
+    const corner = (lx, lz, y) => ({ x: o.x + lx * R.x + lz * Fw.x, y, z: o.z + lx * R.z + lz * Fw.z });
+    const faces = [
+      { n: [0, 1, 0], pts: [[-1, -1, y1], [1, -1, y1], [1, 1, y1], [-1, 1, y1]], k: 1.12 },
+      { n: [Fw.x, 0, Fw.z], pts: [[-1, 1, y0], [1, 1, y0], [1, 1, y1], [-1, 1, y1]], k: 0.98 },
+      { n: [-Fw.x, 0, -Fw.z], pts: [[-1, -1, y0], [1, -1, y0], [1, -1, y1], [-1, -1, y1]], k: 0.9 },
+      { n: [R.x, 0, R.z], pts: [[1, -1, y0], [1, 1, y0], [1, 1, y1], [1, -1, y1]], k: 0.8 },
+      { n: [-R.x, 0, -R.z], pts: [[-1, -1, y0], [-1, 1, y0], [-1, 1, y1], [-1, -1, y1]], k: 0.86 },
+    ];
+    for (const f of faces) {
+      const wpts = f.pts.map(([a, b, y]) => corner(a * o.hx, b * o.hz, y));
+      const cx = wpts.reduce((t, p) => t + p.x, 0) / 4, cy = wpts.reduce((t, p) => t + p.y, 0) / 4, cz = wpts.reduce((t, p) => t + p.z, 0) / 4;
+      // back-face cull: camera must be on the face's outward side
+      if ((cam.x - cx) * f.n[0] + (cam.y - cy) * f.n[1] + (cam.z - cz) * f.n[2] <= 0) continue;
+      const cpts = wpts.map((p) => toCam(p.x, p.y, p.z));
+      if (cpts.every((p) => p.z < NEAR)) continue;
+      const depth = Math.hypot(cx - cam.x, cy - cam.y, cz - cam.z);
+      out.push({ cpts, color: shade(o.col, f.k * (o.flash ? 1 + o.flash * 0.6 : 1), depth), depth: o.sortDepth != null ? o.sortDepth : depth, sub: depth });
+    }
+  }
+
+  function render(now) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cw = Math.round(innerWidth * dpr), ch = Math.round(innerHeight * dpr);
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    W = innerWidth; H = innerHeight;
+    F = Math.max(W, H) * 0.62;
+    setCamera();
+
+    // sky and ground
+    const horizon = H / 2 - F * (cam.sp / cam.cp);
+    const sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, horizon));
+    sky.addColorStop(0, '#5e8fc4'); sky.addColorStop(1, `rgb(${SKY.join(',')})`);
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, Math.max(0, horizon));
+    ctx.fillStyle = shade([70, 74, 82], 1, 120); ctx.fillRect(0, Math.max(0, horizon), W, H);
+
+    // blocks (sidewalk slabs and the plaza)
+    for (const bl of city.blocks) {
+      const cx = (bl.x0 + bl.x1) / 2, cz = (bl.z0 + bl.z1) / 2;
+      const depth = Math.hypot(cx - cam.x, cz - cam.z);
+      if (depth > FOG + 60) continue;
+      const pts = project([[bl.x0, bl.z0], [bl.x1, bl.z0], [bl.x1, bl.z1], [bl.x0, bl.z1]].map(([x, z]) => toCam(x, 0.05, z)));
+      if (pts) fillPoly(pts, shade(bl.park ? [96, 150, 88] : [150, 150, 146], 1, depth));
+    }
+
+    const faces = [];
+    for (const b of city.buildings) {
+      const depth = Math.hypot(b.x - cam.x, b.z - cam.z);
+      if (depth > FOG + 40) continue;
+      const c = toCam(b.x, b.hNow / 2, b.z);
+      if (c.z < -30) continue;
+      boxFaces(faces, { x: b.x, z: b.z, hx: b.hx, hz: b.hz, h: b.hNow, col: b.state === 'rubble' ? [120, 112, 104] : b.col, flash: b.flash, sortDepth: depth });
+    }
+    monsterFaces(faces);
+    // painter's sort: far objects first; inside an object, far faces first
+    faces.sort((a, b) => b.depth - a.depth || b.sub - a.sub);
+    for (const f of faces) { const pts = project(f.cpts); if (pts) fillPoly(pts, f.color); }
+
+    // dust
+    for (const p of G.particles) {
+      const c = toCam(p.x, p.y, p.z);
+      if (c.z < NEAR) continue;
+      const sx = W / 2 + (F * c.x) / c.z, sy = H / 2 - (F * c.y) / c.z;
+      const r = Math.max(1, (F * 1.4) / c.z);
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = `rgb(${p.col.join(',')})`;
+      ctx.fillRect(sx - r / 2, sy - r / 2, r, r);
+    }
+    ctx.globalAlpha = 1;
+
+    hud(now);
+  }
+
+  function monsterFaces(out) {
+    const R = right(mon.yaw), Fw = fwd(mon.yaw);
+    const at = (lx, lz) => ({ x: mon.x + lx * R.x + lz * Fw.x, z: mon.z + lx * R.z + lz * Fw.z });
+    const depth = Math.hypot(mon.x - cam.x, mon.z - cam.z);
+    const green = [92, 190, 84], dark = [60, 140, 60], belly = [200, 220, 140];
+    const parts = [];
+    const lift = (side) => Math.max(0, Math.sin(mon.legPhase + (side > 0 ? 0 : Math.PI))) * 4 + (mon.stompT > 0 && side > 0 ? mon.stompT * 6 : 0);
+    parts.push({ l: [-3.2, 0], y0: lift(-1), h: 9, hx: 2.4, hz: 2.6, col: dark });
+    parts.push({ l: [3.2, 0], y0: lift(1), h: 9, hx: 2.4, hz: 2.6, col: dark });
+    parts.push({ l: [0, -6], y0: 4, h: 4, hx: 1.6, hz: 5, col: dark });                 // tail
+    parts.push({ l: [0, 0], y0: 8, h: 13, hx: 5, hz: 4, col: green });                   // body
+    parts.push({ l: [0, 3.6], y0: 10, h: 9, hx: 3.6, hz: 0.6, col: belly });             // belly plate
+    parts.push({ l: [0, 2.5], y0: 21, h: 6, hx: 3.4, hz: 4.2, col: green });              // head
+    for (let i = 0; i < 4; i++) parts.push({ l: [0, -2 - i * 1.6], y0: 20 - i * 2.2, h: 2.4, hx: 0.7, hz: 0.7, col: [240, 230, 120] }); // spines
+    const punchReach = mon.punchT * 7, hookSwing = mon.hookT;
+    const armL = { l: [-6, 1 + (mon.punchHand < 0 ? punchReach : 0) + hookSwing * 3], y0: 14, h: 3, hx: 1.4, hz: 3.4, col: green };
+    const armR = { l: [6 - hookSwing * 4, 1 + (mon.punchHand > 0 ? punchReach : 0) + hookSwing * 5], y0: 14, h: 3, hx: 1.4, hz: 3.4, col: green };
+    parts.push(armL, armR);
+    for (const p of parts) {
+      const c = at(p.l[0], p.l[1]);
+      boxFaces(out, { x: c.x, z: c.z, y0: p.y0, h: p.h, hx: p.hx, hz: p.hz, yaw: mon.yaw, col: p.col, sortDepth: depth });
+    }
+  }
+
+  function hud(now) {
+    if (G.state !== 'round') return;
+    const top = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0) + 14;
+    const left = Math.max(0, G.roundEnd - now);
+    const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
+    ctx.textBaseline = 'top';
+    ctx.font = '800 22px system-ui, sans-serif';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.fillStyle = '#fff';
+    const line = (txt, x, y, align) => { ctx.textAlign = align; ctx.strokeText(txt, x, y); ctx.fillText(txt, x, y); };
+    line(`Round ${G.round}/${T.rounds}  ${mm}:${String(ss).padStart(2, '0')}`, 14, top, 'left');
+    line(`${G.score.toLocaleString()}`, W - 14, top, 'right');
+    ctx.font = '600 14px system-ui, sans-serif';
+    line(`+${Math.round(G.bonusMs / 1000)}s bonus  ·  ${G.roundStats.buildings} down`, 14, top + 28, 'left');
+    if (G.combo >= 2) {
+      ctx.font = `900 ${Math.round(30 + G.comboPop * 18)}px system-ui, sans-serif`;
+      ctx.fillStyle = '#ffd166';
+      line(`${G.combo}x COMBO`, W / 2, top + 54, 'center');
+      ctx.fillStyle = '#fff';
+    }
+    if (now < G.headlineUntil) {
+      ctx.font = '700 15px system-ui, sans-serif';
+      const tw = ctx.measureText(G.headline).width;
+      ctx.fillStyle = 'rgba(160, 20, 20, .9)';
+      ctx.fillRect(W / 2 - tw / 2 - 12, top + 104, tw + 24, 28);
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+      ctx.fillText(G.headline, W / 2, top + 110);
+    }
+  }
+
+  // ---------- flow ----------
+  function startGame(useCamera) {
+    G.useCamera = useCamera;
+    G.round = 0;
+    G.score = 0;
+    G.totals = zeroStats();
+    startRound();
+  }
+
+  function startRound() {
+    G.round++;
+    city = makeCity(1000 + G.round * 77 + Math.floor(Math.random() * 1e6));
+    Object.assign(mon, { x: 0, z: 0, yaw: 0, speed: 0 });
+    G.roundStats = zeroStats();
+    G.bonusMs = 0;
+    G.combo = 0;
+    G.particles = [];
+    G.roundStart = performance.now();
+    G.roundEnd = G.roundStart + T.roundMs;
+    G.state = 'round';
+    show(null);
+  }
+
+  function endRound(now) {
+    G.roundStats.activeMs = now - G.roundStart;
+    for (const k of Object.keys(G.totals)) G.totals[k] += G.roundStats[k];
+    if (G.round >= T.rounds) { G.state = 'summary'; renderSummary(); show('summary'); return; }
+    G.state = 'rest';
+    G.restUntil = now + T.restMs;
+    $('restTitle').textContent = `Round ${G.round} complete`;
+    $('restStats').innerHTML = statRows(G.roundStats);
+    show('rest');
+  }
+
+  const fmtMin = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
+  function statRows(s) {
+    return [
+      ['Buildings dropped', s.buildings], ['Score', s.score.toLocaleString()], ['Steps', s.steps],
+      ['Stomps', s.stomps], ['Punches', s.punches], ['Hooks', s.hooks], ['Work time', fmtMin(s.activeMs)],
+    ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
+  }
+
+  function renderSummary() {
+    const t = G.totals;
+    $('sumStats').innerHTML = statRows(t);
+    const lines = [];
+    const n = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
+    const restMin = ((T.rounds - 1) * T.restMs) / 60000;
+    lines.push(`<p><b>Conditioning:</b> ${fmtMin(t.activeMs)} of work across ${T.rounds} rounds with ${restMin} minute${restMin === 1 ? '' : 's'} of rest. Marching ${n(t.steps, 'step')} between bursts is low-intensity steady state.</p>`);
+    if (t.stomps) lines.push(`<p><b>Single-leg power:</b> ${n(t.stomps, 'stomp')}, each a knee drive into a forceful landing.</p>`);
+    if (t.punches + t.hooks) lines.push(`<p><b>Upper-body power:</b> ${t.punches} straight punch${t.punches === 1 ? '' : 'es'} and ${n(t.hooks, 'hook')} for rotational speed.</p>`);
+    $('payoff').innerHTML = lines.join('');
+  }
+
+  function show(id) {
+    for (const s of ['title', 'rest', 'summary']) $(s).hidden = s !== id;
+    if (id) note('');
+  }
+
+  function note(msg, ms = 6000) {
+    const el = $('note');
+    el.textContent = msg;
+    el.hidden = !msg;
+    clearTimeout(note.t);
+    if (msg && ms) note.t = setTimeout(() => { el.hidden = true; }, ms);
+  }
+
+  // Show only the touch buttons this game uses.
+  const DEMO_BUTTONS = ['Jab', 'Cross', 'Hook', 'Stomp'];
+  function enableTouch() {
+    engine.enable_demo($('demo'));
+    const bar = document.querySelector('#demo .re-demo-buttons');
+    if (!bar) return;
+    for (const b of bar.querySelectorAll('button')) b.hidden = !DEMO_BUTTONS.includes(b.textContent.trim());
+    bar.style.gridTemplateColumns = `repeat(${DEMO_BUTTONS.length}, 1fr)`;
+  }
+
+  $('playDemo').addEventListener('click', () => {
+    enableTouch();
+    startGame(false);
+    note('Left zone: tap to march, double-tap and hold to run. Right zone: drag to turn. Buttons: Jab, Cross, Hook, Stomp.', 7000);
+  });
+
+  $('playCamera').addEventListener('click', async () => {
+    show(null);
+    $('pip').style.display = 'block';
+    note('Starting camera...', 0);
+    try {
+      await engine.start('living_room');
+    } catch (err) {
+      $('pip').style.display = 'none';
+      note('Camera unavailable: ' + err.message + '. Using touch controls.');
+      enableTouch();
+      startGame(false);
+      return;
+    }
+    const off = engine.on('calibration', (s) => note(s.prompt, 0));
+    if (!engine.is_calibrated()) await engine.calibrate('living_room').catch(() => {});
+    off();
+    const missing = ['step', 'strike', 'stomp'].filter((e) => !RE.detectors.has(e));
+    note(missing.length ? 'Camera turning works now. Marching, punches and stomps arrive with the next engine update.' : 'Calibrated. Go wreck something.', 7000);
+    startGame(true);
+  });
+
+  $('skipRest').addEventListener('click', () => { if (G.state === 'rest') startRound(); });
+  $('again').addEventListener('click', () => { show('title'); G.state = 'title'; });
+
+  // ---------- loop ----------
+  city = makeCity(42);
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt, now);
+    render(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // test hook for automated checks
+  window.__game = { G, mon, get city() { return city; }, T };
+})();
+</script>
+</body>
+</html>
