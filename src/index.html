@@ -94,9 +94,7 @@
     rounds: 3,
     walkSpeed: 13,         // units per second at 110 steps per minute
     runBoost: 1.6,
-    turnRate: 80,          // degrees per second at full lean
-    leanDeadzone: 0.06,
-    leanFull: 0.25,
+    turnRate: 80,          // degrees per second at full torso turn (engine turn = 1)
     monsterRadius: 6,
     punch: { range: 20, cone: 35, damage: 40 },
     hook: { range: 22, cone: 75, damage: 28 },
@@ -253,10 +251,8 @@
       let target = Math.min(cadence / 110, 1.4) * T.walkSpeed;
       if (cadence >= 150) target *= T.runBoost;
       mon.speed += (target - mon.speed) * Math.min(1, dt * 3);
-      // lean: deadzone, then proportional turn rate
-      const lean = s.lean || 0;
-      const mag = Math.max(0, Math.abs(lean) - T.leanDeadzone) / (T.leanFull - T.leanDeadzone);
-      mon.yaw += Math.sign(lean) * Math.min(1, mag) * T.turnRate * Math.PI / 180 * dt;
+      // torso turn steers: the engine deadzones it and scales it to -1..1
+      mon.yaw += (s.turn || 0) * T.turnRate * Math.PI / 180 * dt;
 
       const f = fwd(mon.yaw);
       const nx = mon.x + f.x * mon.speed * dt, nz = mon.z + f.z * mon.speed * dt;
@@ -557,13 +553,8 @@
   }
 
   // Show only the touch buttons this game uses.
-  const DEMO_BUTTONS = ['Jab', 'Cross', 'Hook', 'Stomp'];
   function enableTouch() {
-    engine.enable_demo($('demo'));
-    const bar = document.querySelector('#demo .re-demo-buttons');
-    if (!bar) return;
-    for (const b of bar.querySelectorAll('button')) b.hidden = !DEMO_BUTTONS.includes(b.textContent.trim());
-    bar.style.gridTemplateColumns = `repeat(${DEMO_BUTTONS.length}, 1fr)`;
+    engine.enable_demo($('demo'), { buttons: ['jab', 'cross', 'hook', 'stomp'] });
   }
 
   $('playDemo').addEventListener('click', () => {
@@ -589,7 +580,11 @@
     if (!engine.is_calibrated()) await engine.calibrate('living_room').catch(() => {});
     off();
     const missing = ['step', 'strike', 'stomp'].filter((e) => !RE.detectors.has(e));
-    note(missing.length ? 'Camera turning works now. Marching, punches and stomps arrive with the next engine update.' : 'Calibrated. Go wreck something.', 7000);
+    const later = [];
+    if (missing.includes('strike')) later.push('punches');
+    if (missing.includes('stomp')) later.push('stomps');
+    if (missing.includes('step')) later.unshift('marching');
+    note(later.length ? `Calibrated. ${later.join(' and ').replace(/^./, (c) => c.toUpperCase())} arrive with the next engine update.` : 'Calibrated. Go wreck something.', 7000);
     startGame(true);
   });
 

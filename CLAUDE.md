@@ -31,5 +31,5 @@ Kaiju smash fitness game, third person from behind the monster: march to stomp f
 ## Status and next steps
 
 - First playable version done with touch controls: movement, smashing, bump damage, combos, time bonuses capped at 5 minutes a round, rest screen, summary with S&C payoff.
-- Camera: calibration and lean steering work now. Marching, punches and stomps need the engine's step, strike and stomp detectors (body-arcade milestones 2 and 3); the game already listens for those events.
-- Next: steer by torso turn instead of lean once the engine ships the `turn` signal; ask the engine for a demo-mode option to pick touch buttons (this game hides unused ones by label for now).
+- Engine 0.2.0: steering reads `signals().turn` (torso turn, already deadzoned, -1 to 1) times `T.turnRate`; demo shows only jab, cross, hook and stomp via `enable_demo(container, { buttons })`.
+- Camera: calibration, marching (step, cadence) and turn steering work. Punches and stomps need the engine's strike and stomp detectors (body-arcade milestone 3); the game already listens for those events.
