@@ -1,12 +1,14 @@
 {
   "name": "rep-engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "files": [
     "core.js",
     "config.js",
     "one-euro.js",
     "normalize.js",
     "signals.js",
+    "detectors.js",
+    "locomotion.js",
     "calibration.js",
     "pose-source.js",
     "recorder.js",

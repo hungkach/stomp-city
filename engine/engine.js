@@ -4,7 +4,9 @@
 //   await engine.start();             // camera + pose
 //   await engine.calibrate();         // resolves with the saved profile
 //   engine.on('step', ({ leg }) => ...);
+//   engine.set_movement({ rails: false }); // free movement, lean sets turn rate
 //   const s = engine.signals();       // per-frame snapshot
+//   const m = engine.locomotion();    // speed, facing, lateral, state
 (function (g) {
   'use strict';
   const RE = g.RepEngine;
@@ -31,6 +33,9 @@
       smoother: new RE.LandmarkSmoother(cfg.smoothing, cfg.visibility.hold),
       drift: new RE.DriftMonitor(cfg),
       recorder: new RE.Recorder(cfg),
+      detectors: new RE.LocomotionDetectors(cfg),
+      det: null,
+      loco: new RE.Locomotion(cfg),
       demoInput: null,
       demoUi: null,
       frame: null,
@@ -41,12 +46,19 @@
       session: { startedAt: null, frames: 0, counts: {} },
     };
 
-    // Count every event for the session summary and feed the move test.
+    // Count every event for the session summary, feed the move test and the
+    // locomotion state machine (camera and demo events alike).
     emitter.on('*', (name, payload) => {
       if (name === 'frame' || name === 'calibration') return;
       st.session.counts[name] = (st.session.counts[name] || 0) + 1;
       if (st.calibrator) st.calibrator.onEvent(name, payload);
+      st.loco.onEvent(name, payload, clock());
     });
+
+    // Event time: frame time for camera and replay, wall clock for demo.
+    function clock() {
+      return st.source === 'demo' || !st.raw ? RE.now() : st.raw.t;
+    }
 
     function preset() { return RE.presets[st.presetId]; }
 
@@ -56,6 +68,8 @@
       // Smooth in calibrated body scale from now on (see LandmarkSmoother).
       st.scaleRef = cal ? cal.shoulderWidth : null;
       st.smoother.reset();
+      st.detectors = new RE.LocomotionDetectors(cfg);
+      st.det = null;
     }
 
     function ingest(raw) {
@@ -78,7 +92,7 @@
           const ls = px[RE.LM.L_SHOULDER], rs = px[RE.LM.R_SHOULDER];
           if (ls.v >= cfg.visibility.hold && rs.v >= cfg.visibility.hold) st.scaleRef = RE.dist(ls, rs) || null;
         }
-        const sm = st.smoother.update(px, RE.frameWorld(raw), raw.t / 1000, st.scaleRef || 1);
+        const sm = st.smoother.update(px, RE.frameWorld(raw), raw.t / 1000, st.scaleRef || 1, cfg.smoothing.worldUnit);
         points = sm.points;
         world = sm.world;
       }
@@ -86,7 +100,7 @@
 
       if (st.calibrator) runCalibrator();
 
-      const sig = points ? RE.computeSignals(points, st.cal, cfg) : { confidence: 0, missing: RE.REQUIRED.map((i) => RE.LM_NAMES[i]), calibrated: !!st.cal };
+      const sig = points ? RE.computeSignals(points, st.cal, cfg, world) : { confidence: 0, missing: RE.REQUIRED.map((i) => RE.LM_NAMES[i]), calibrated: !!st.cal };
       st.sig = sig;
 
       // confidence transitions
@@ -95,14 +109,26 @@
       if (!low && st.lowConfidence) emitter.emit('confidence_ok', {});
       st.lowConfidence = low;
 
-      // drift: player moved closer or farther than the baseline
-      if (st.cal && !low && st.drift.update(sig.shoulderRatio, raw.t)) {
-        emitter.emit('recalibrate_suggested', { reason: 'distance', shoulderRatio: sig.shoulderRatio });
+      // drift: player moved closer or farther than the baseline. Torso length,
+      // not shoulder width, so a torso turn is never mistaken for distance.
+      if (st.cal && !low && st.drift.update(sig.torsoRatio, raw.t)) {
+        emitter.emit('recalibrate_suggested', { reason: 'distance', torsoRatio: sig.torsoRatio });
       }
 
       if (st.source !== 'demo') {
+        // gesture detectors, then the state machine reads their events
+        st.det = st.cal && points
+          ? st.detectors.update({ t: raw.t, w: raw.w, h: raw.h, points, raw: px, world, cal: st.cal, sig, low, holdVis: cfg.visibility.hold })
+          : null;
+        if (st.det) for (const [name, payload] of st.det.events) emitter.emit(name, payload);
+        const det = st.det;
+        st.loco.update(raw.t, { cadence_spm: det ? det.cadence : 0, turn: det ? det.turn : 0 }, st.mode);
         st.snapshot = Object.assign(emptySnapshot(), {
-          lean: sig.lean != null && !low ? sig.lean : 0,
+          cadence_spm: det ? det.cadence : 0,
+          effort: det ? det.effort : 0,
+          speed: st.loco.speed,
+          turn: det ? det.turn : 0,
+          lean: det ? det.lean : 0,
           squat_depth: sig.squatDepth != null && !low ? sig.squatDepth : 0,
           confidence: sig.confidence,
         });
@@ -129,6 +155,8 @@
 
     function runCalibrator() {
       const status = st.calibrator.update(st.frame);
+      // the move test needs live detectors: use the fresh baseline for it
+      if (status.state === 'move_test' && st.cal !== st.calibrator.result) setCal(st.calibrator.result);
       st.calStatus = status;
       emitter.emit('calibration', status);
       if (!headless && status.prompt && status.prompt !== st.lastPrompt) {
@@ -139,7 +167,7 @@
         const cal = status.result;
         RE.profiles.save(cal);
         st.calibrator = null;
-        setCal(cal);
+        if (st.cal !== cal) setCal(cal);
         st.profileChecked.add(cal.orientation);
         emitter.emit('calibrated', { cal, fromProfile: false, skippedTests: status.skippedTests });
         if (st.calPromise) { st.calPromise.resolve(cal); st.calPromise = null; }
@@ -185,11 +213,11 @@
       stop() { stopSource(); api.disable_demo(); },
 
       // Runs framing check, baseline capture and move test. Resolves with
-      // the saved profile.
-      calibrate(presetId) {
+      // the saved profile. opts.moveTest: false skips the move test.
+      calibrate(presetId, opts) {
         if (presetId && RE.presets[presetId]) st.presetId = presetId;
         if (st.calPromise) st.calPromise.reject(new Error('calibration restarted'));
-        st.calibrator = new RE.Calibrator(cfg, st.presetId);
+        st.calibrator = new RE.Calibrator(cfg, st.presetId, opts);
         st.lastPrompt = '';
         return new Promise((resolve, reject) => { st.calPromise = { resolve, reject }; });
       },
@@ -207,12 +235,13 @@
       },
       is_calibrated: () => !!st.cal,
 
-      enable_demo(container) {
+      // opts.buttons: which demo buttons to show, e.g. ['jab', 'cross', 'stomp'].
+      enable_demo(container, opts) {
         if (st.demoInput) return;
         stopSource();
         st.source = 'demo';
         st.demoInput = new RE.DemoInput(cfg, (name, payload) => emitter.emit(name, payload));
-        if (container) st.demoUi = new RE.DemoController(container, st.demoInput);
+        if (container) st.demoUi = new RE.DemoController(container, st.demoInput, opts);
         if (st.session.startedAt === null) st.session.startedAt = RE.now();
       },
       disable_demo() {
@@ -223,14 +252,31 @@
         st.demoUi = null;
         if (st.source === 'demo') st.source = 'idle';
         st.snapshot = emptySnapshot();
+        st.loco.reset();
       },
 
       on: (name, fn) => emitter.on(name, fn),
 
       signals() {
-        if (st.source === 'demo' && st.demoInput) st.snapshot = st.demoInput.signals(RE.now());
+        if (st.source === 'demo' && st.demoInput) {
+          const now = RE.now();
+          const s = st.demoInput.signals(now);
+          st.loco.update(now, s, st.mode);
+          s.speed = st.loco.speed;
+          st.snapshot = s;
+        }
         return Object.assign({}, st.snapshot);
       },
+
+      // Locomotion state: {state: idle | walk | run, speed, target_speed,
+      // facing (degrees), lateral (-1..1, rails only)}.
+      locomotion() {
+        if (st.source === 'demo') api.signals();
+        return st.loco.snapshot();
+      },
+      // Movement model, see locomotion.js: {rails, at_intersection(),
+      // branch_bearing(side), target_bearing()}.
+      set_movement(model) { st.loco.setModel(model || {}); },
 
       set_mode(mode) {
         if (!MODES.includes(mode)) throw new Error('unknown mode ' + mode);
@@ -248,16 +294,16 @@
       is_recording: () => st.recorder.active,
       recording_ms: () => st.recorder.elapsedMs,
 
-      // Milestone 1 summary; work/rest split and per-gesture reps fill in
-      // as detectors land.
+      // Session telemetry. activeMs is time spent moving (walk or run);
+      // strike totals and the work/rest split arrive with the combat module.
       session_summary() {
-        const end = st.raw ? st.raw.t : RE.now();
-        return {
+        const end = st.raw && st.source !== 'demo' ? st.raw.t : RE.now();
+        return Object.assign({
           startedAt: st.session.startedAt,
           durationMs: st.session.startedAt === null ? 0 : Math.max(0, end - st.session.startedAt),
           frames: st.session.frames,
           events: Object.assign({}, st.session.counts),
-        };
+        }, st.loco.summary());
       },
 
       // Debug view for the overlay and tests. Games should not depend on it.
@@ -275,6 +321,9 @@
           calibration: st.calibrator ? st.calStatus : null,
           signals: api.signals(),
           rawSignals: st.sig,
+          detectors: st.det,
+          demo: st.demoInput,
+          locomotion: st.loco.snapshot(),
         };
       },
 
@@ -285,6 +334,6 @@
   };
 
   function emptySnapshot() {
-    return { cadence_spm: 0, effort: 0, speed: 0, lean: 0, squat_depth: 0, guard_up: false, confidence: 0 };
+    return { cadence_spm: 0, effort: 0, speed: 0, turn: 0, lean: 0, squat_depth: 0, guard_up: false, confidence: 0 };
   }
 })(globalThis);

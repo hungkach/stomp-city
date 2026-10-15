@@ -7,19 +7,19 @@
   const L = RE.LM;
 
   // Move test prompts from the spec. A prompt only runs once a detector for
-  // its event is registered (milestone 2); until then the step is skipped.
+  // its event is registered; until then the step is skipped.
   RE.MOVE_TEST = Object.freeze([
     { id: 'march', prompt: 'March four steps', event: 'step', count: 4 },
     { id: 'high_knees', prompt: 'Two high knees', event: 'run_start', count: 1 },
-    { id: 'lean_left', prompt: 'Lean left', event: 'lean_left', count: 1 },
-    { id: 'lean_right', prompt: 'Lean right', event: 'lean_right', count: 1 },
+    { id: 'turn_left', prompt: 'Turn your body left', event: 'turn_left', count: 1 },
+    { id: 'turn_right', prompt: 'Turn your body right', event: 'turn_right', count: 1 },
     { id: 'point_left', prompt: 'Point left', event: 'point', match: { side: 'left' }, count: 1 },
     { id: 'point_right', prompt: 'Point right', event: 'point', match: { side: 'right' }, count: 1 },
     { id: 'squat', prompt: 'One squat', event: 'squat', count: 1 },
     { id: 'jab_cross', prompt: 'Jab, cross', event: 'strike', count: 2 },
   ]);
 
-  // Event names whose detectors exist. Milestone 2 adds to this set.
+  // Event names whose detectors exist (detectors.js registers them).
   RE.detectors = RE.detectors || new Set();
 
   function median(values) {
@@ -45,7 +45,8 @@
   };
 
   class Calibrator {
-    constructor(cfg, presetId) {
+    // opts.moveTest: false skips the move test (quick re-baseline, tests).
+    constructor(cfg, presetId, opts = {}) {
       this.cfg = cfg;
       this.presetId = presetId;
       this.state = 'framing';
@@ -55,8 +56,9 @@
       this.result = null;
       this.testIndex = 0;
       this.testHits = 0;
-      this.tests = RE.MOVE_TEST.filter((t) => RE.detectors.has(t.event));
-      this.skippedTests = RE.MOVE_TEST.length - this.tests.length;
+      this.tests = opts.moveTest === false ? [] : RE.MOVE_TEST.filter((t) => RE.detectors.has(t.event));
+      // prompts left out because their detector does not exist yet
+      this.skippedTests = opts.moveTest === false ? 0 : RE.MOVE_TEST.length - this.tests.length;
     }
 
     // frame: {points (smoothed px), w, h, t (ms)}. Returns a status object.
@@ -85,7 +87,7 @@
       }
 
       if (this.state === 'baseline') {
-        this.samples.push(sample(points, w, h));
+        this.samples.push(sample(points, frame.world));
         if (t - this.baselineSince >= this.cfg.calibration.baselineMs) {
           this.result = this._finish(w, h);
           this.state = this.tests.length ? 'move_test' : 'done';
@@ -148,7 +150,7 @@
     _finish(w, h) {
       const m = (k) => median(this.samples.map((s) => s[k]));
       const cal = {
-        version: 1,
+        version: RE.PROFILE_VERSION,
         preset: this.presetId,
         orientation: RE.orientationOf(w, h),
         videoW: w,
@@ -163,12 +165,18 @@
       // Knee baselines in body units, relative to the calibrated hip.
       cal.kneeBaseL = median(this.samples.map((s) => (cal.hipMidY - s.kneeLY) / cal.torsoLength));
       cal.kneeBaseR = median(this.samples.map((s) => (cal.hipMidY - s.kneeRY) / cal.torsoLength));
+      // World landmark knee baselines, when the source provides world landmarks.
+      const ws = this.samples.filter((s) => s.world);
+      if (ws.length >= this.samples.length / 2) {
+        cal.kneeBaseWL = median(ws.map((s) => s.world.kneeL));
+        cal.kneeBaseWR = median(ws.map((s) => s.world.kneeR));
+      }
       return cal;
     }
   }
   RE.Calibrator = Calibrator;
 
-  function sample(p) {
+  function sample(p, world) {
     const sMid = RE.mid(p[L.L_SHOULDER], p[L.R_SHOULDER]);
     const hMid = RE.mid(p[L.L_HIP], p[L.R_HIP]);
     return {
@@ -179,10 +187,13 @@
       sideSign: Math.sign(p[L.R_SHOULDER].x - p[L.L_SHOULDER].x),
       kneeLY: p[L.L_KNEE].y,
       kneeRY: p[L.R_KNEE].y,
+      world: world ? RE.worldKneeHeights(world) : null,
     };
   }
 
-  // Saved player profiles, keyed by preset and orientation.
+  // Saved player profiles, keyed by preset and orientation. Version 2 added
+  // the world landmark knee baselines; older profiles ask for recalibration.
+  RE.PROFILE_VERSION = 2;
   RE.profiles = {
     key: (preset, orientation) => `rep-engine:profile:${preset}:${orientation}`,
     load(preset, orientation) {
@@ -190,14 +201,14 @@
       if (!raw) return null;
       try {
         const cal = JSON.parse(raw);
-        return cal && cal.version === 1 && cal.shoulderWidth > 0 && cal.torsoLength > 0 ? cal : null;
+        return cal && cal.version === RE.PROFILE_VERSION && cal.shoulderWidth > 0 && cal.torsoLength > 0 ? cal : null;
       } catch (_) { return null; }
     },
     save(cal) { RE.storage.set(this.key(cal.preset, cal.orientation), JSON.stringify(cal)); },
     clear(preset, orientation) { RE.storage.remove(this.key(preset, orientation)); },
   };
 
-  // Fires once when shoulder width stays more than driftRatio off baseline
+  // Fires once when torso length stays more than driftRatio off baseline
   // for driftHoldMs, then re-arms when the player is back in range.
   class DriftMonitor {
     constructor(cfg) { this.cfg = cfg.calibration; this.since = null; this.fired = false; }

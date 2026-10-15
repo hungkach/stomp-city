@@ -33,9 +33,10 @@
 
   // Smooths pixel landmarks (x, y) and world landmarks (x, y, z).
   // Input points: {x, y, v} pixels; world: {x, y, z, v} meters (or null).
-  // scale: pixels per body unit (shoulder width). Filtering happens in
-  // body-scaled units so the One Euro speed term behaves the same whether
-  // the player fills a portrait phone or a landscape tablet.
+  // scale: pixels per body unit (shoulder width); worldScale: meters per
+  // body unit. Filtering happens in body-scaled units so the One Euro speed
+  // term behaves the same whether the player fills a portrait phone or a
+  // landscape tablet, and the same for image and world landmarks.
   class LandmarkSmoother {
     constructor(smoothing, holdVisibility) {
       this.cfg = smoothing;
@@ -53,8 +54,9 @@
       return map.get(idx);
     }
     // Returns {points, world, held:Set<index>}
-    update(points, world, tSec, scale = 1) {
+    update(points, world, tSec, scale = 1, worldScale = 1) {
       const k = scale > 0 ? scale : 1;
+      const kw = worldScale > 0 ? worldScale : 1;
       const outP = new Array(points.length);
       const outW = world ? new Array(world.length) : null;
       const held = new Set();
@@ -76,7 +78,7 @@
             outW[i] = Object.assign({}, this.lastW.get(i), { v: w.v, held: true });
           } else {
             const [a, b, c] = this._filters(this.wl, i, 3);
-            const s = { x: a.filter(w.x, tSec), y: b.filter(w.y, tSec), z: c.filter(w.z, tSec), v: w.v, held: false };
+            const s = { x: a.filter(w.x / kw, tSec) * kw, y: b.filter(w.y / kw, tSec) * kw, z: c.filter(w.z / kw, tSec) * kw, v: w.v, held: false };
             if (w.v >= this.hold) this.lastW.set(i, s);
             outW[i] = s;
           }

@@ -33,7 +33,7 @@
   #note[hidden] { display: none; }
 </style>
 <script>
-/* rep-engine 0.1.0 from hungkach/body-arcade@3634b74, inlined by build/build.mjs. Edit engine/ via scripts/update-engine.mjs, not this copy. */
+/* rep-engine 0.2.0 from hungkach/body-arcade@446ad48, inlined by build/build.mjs. Edit engine/ via scripts/update-engine.mjs, not this copy. */
 // ---- engine/core.js ----
 // rep-engine core: namespace, landmark indices, small shared helpers.
 // Every engine file is a plain script that adds to globalThis.RepEngine,
@@ -42,7 +42,7 @@
   'use strict';
   const RE = (g.RepEngine = g.RepEngine || {});
 
-  RE.version = '0.1.0';
+  RE.version = '0.2.0';
 
   // MediaPipe Pose landmark indices (33-point model). "Left" and "right"
   // are the player's own anatomical sides.
@@ -162,7 +162,10 @@
         minTrackingConfidence: 0.5,
       },
       camera: { idealWidth: 1280, idealHeight: 720 },
-      smoothing: { minCutoff: 1.0, beta: 0.02, dCutoff: 1.0 },
+      // One Euro in body units (S per second). beta 2 keeps lag near 50 ms on a
+      // marching knee with rest jitter about the same as beta 0.02 (which lagged
+      // 100 to 140 ms); fast wrists get a higher cutoff still, so strikes lag less.
+      smoothing: { minCutoff: 1.0, beta: 2.0, dCutoff: 1.0, worldUnit: 0.4 },
       visibility: {
         hold: 0.5,    // below this a landmark holds its last value
         framing: 0.6, // required landmarks must beat this to pass framing
@@ -176,6 +179,82 @@
       },
       signals: {
         squatFullDrop: 0.5, // hip drop (in T) that reads as squat_depth 1
+      },
+      // Lengths in body units: S = shoulder width, T = torso length.
+      march: {
+        liftOn: 0.15,        // knee lift (T) above the other knee that starts a step
+        liftOff: 0.08,       // lift (T) the knee must fall below before the next step
+        debounceMs: 150,     // per leg
+        sameLegMinMs: 600,   // a same-leg repeat counts only after this gap (legs alternate)
+        squatPauseDrop: 0.2, // squat beats march: hip drop (T) past this pauses stepping
+        liftSource: 'auto',  // 'auto' uses world landmarks when the profile has them, 'image' forces 2D
+        cadenceWindowMs: 3000,
+      },
+      run: {
+        lift: 0.35,     // peak knee lift (T) of a high-knee step
+        cadence: 150,   // steps per minute between high-knee steps
+        startSteps: 2,  // consecutive high-knee steps that start a run
+        exitMs: 600,    // run ends after this long with no high-knee step
+      },
+      // Torso turn steering: yaw from (shoulder width / torso length) against
+      // the calibrated ratio, direction from shoulder depth and the nose.
+      turn: {
+        deadzone: 15,     // degrees of torso yaw that still mean straight ahead
+        full: 45,         // degrees that give full turn rate
+        depthMin: 0.1,    // shoulder depth difference / shoulder width that gives a direction (about 6 degrees)
+        noseMin: 0.04,    // S, nose offset from the shoulder midpoint that gives a direction
+        eventLevel: 0.5,  // turn level that fires turn_left / turn_right
+        eventReset: 0.2,
+      },
+      // Lean is still measured (the lean signal), but turn steers.
+      lean: {
+        deadzone: 0.06,      // S
+        full: 0.25,          // S, lean that reads as 1
+        // S per second; faster wrists suppress turn and lean (punches never
+        // steer). The spec's 2 S/s cut steering on every arm swing once the
+        // torso is turned (swing then moves sideways in the image: up to 4 S/s
+        // marching, 11 S/s high knees); swipes peak at 35 S/s and up.
+        wristSpeedMax: 12,
+        suppressHoldMs: 250, // steering stays off this long after the wrists slow down
+        eventLevel: 0.5,     // steering level that fires lean_left / lean_right
+        eventReset: 0.2,     // steering must return below this to fire again
+      },
+      point: {
+        wristOut: 0.8,    // S, wrist sideways past its shoulder
+        elbowMin: 150,    // degrees, near straight
+        maxBelow: 0.6,    // T, wrist may sit at most this far below its shoulder
+        maxWristSpeed: 1.0, // S per second; the pointing hand must be still
+        holdMs: 300,
+        cooldownMs: 1000,
+      },
+      turnAround: {
+        aboveNose: 0.3, // T, both wrists this far above the nose
+        holdMs: 500,
+        cooldownMs: 2000,
+      },
+      wave: {
+        minSwing: 0.15,  // S, sideways wrist travel that counts as one direction change
+        minAbove: 0.25,  // T, wrist this far above its shoulder (a swipe at shoulder height is not a wave)
+        reversals: 2,
+        windowMs: 1000,
+        cooldownMs: 2000,
+      },
+      effort: {
+        fullCadence: 170, // cadence that reads as full effort
+        fullLift: 0.6,    // knee lift (T) that reads as full effort
+      },
+      // Speeds are in world units per second; games scale them to their world.
+      locomotion: {
+        walkSpeed: 1.4,
+        runSpeed: 3.5,
+        walkCadence: 70,       // below this cadence the player stops
+        refCadence: 110,       // cadence that gives exactly walkSpeed
+        walkScale: [0.8, 1.2], // walk speed range as a multiple of walkSpeed
+        rampMs: 300,           // speed reaches its target over this long
+        stopMs: 400,           // coast to a stop over this long
+        stopAfterMs: 600,      // no step for this long (or 1.5 step intervals, if longer) stops you
+        stopIntervals: 1.5,
+        maxTurnRate: 90,       // degrees per second at full turn (free movement)
       },
       demo: {
         doubleTapMs: 350,
@@ -247,9 +326,10 @@
 
   // Smooths pixel landmarks (x, y) and world landmarks (x, y, z).
   // Input points: {x, y, v} pixels; world: {x, y, z, v} meters (or null).
-  // scale: pixels per body unit (shoulder width). Filtering happens in
-  // body-scaled units so the One Euro speed term behaves the same whether
-  // the player fills a portrait phone or a landscape tablet.
+  // scale: pixels per body unit (shoulder width); worldScale: meters per
+  // body unit. Filtering happens in body-scaled units so the One Euro speed
+  // term behaves the same whether the player fills a portrait phone or a
+  // landscape tablet, and the same for image and world landmarks.
   class LandmarkSmoother {
     constructor(smoothing, holdVisibility) {
       this.cfg = smoothing;
@@ -267,8 +347,9 @@
       return map.get(idx);
     }
     // Returns {points, world, held:Set<index>}
-    update(points, world, tSec, scale = 1) {
+    update(points, world, tSec, scale = 1, worldScale = 1) {
       const k = scale > 0 ? scale : 1;
+      const kw = worldScale > 0 ? worldScale : 1;
       const outP = new Array(points.length);
       const outW = world ? new Array(world.length) : null;
       const held = new Set();
@@ -290,7 +371,7 @@
             outW[i] = Object.assign({}, this.lastW.get(i), { v: w.v, held: true });
           } else {
             const [a, b, c] = this._filters(this.wl, i, 3);
-            const s = { x: a.filter(w.x, tSec), y: b.filter(w.y, tSec), z: c.filter(w.z, tSec), v: w.v, held: false };
+            const s = { x: a.filter(w.x / kw, tSec) * kw, y: b.filter(w.y / kw, tSec) * kw, z: c.filter(w.z / kw, tSec) * kw, v: w.v, held: false };
             if (w.v >= this.hold) this.lastW.set(i, s);
             outW[i] = s;
           }
@@ -354,10 +435,9 @@
 })(globalThis);
 
 // ---- engine/signals.js ----
-// Per-frame continuous signals from smoothed pixel landmarks + calibration.
-// Milestone 1 computes the position signals (lean, squat depth, knee lift,
-// confidence, drift). Cadence, effort, speed and guard arrive with the
-// gesture detectors in milestone 2.
+// Per-frame continuous signals from smoothed pixel landmarks + calibration:
+// the position signals (lean, squat depth, knee lift, confidence, drift)
+// that detectors in detectors.js turn into events, cadence and steering.
 (function (g) {
   'use strict';
   const RE = g.RepEngine;
@@ -375,7 +455,36 @@
     return { confidence: Math.max(0, min), missing };
   };
 
-  RE.computeSignals = function (points, cal, cfg) {
+  // Steps per minute from step timestamps (ms) inside the window. The rate
+  // comes from the spacing of recent steps, and once the current gap runs
+  // longer than that spacing it decays as 60000 / gap, so cadence falls off
+  // smoothly when the player stops instead of holding for the whole window.
+  RE.cadenceFromSteps = function (times, now, windowMs) {
+    const recent = times.filter((t) => t <= now && now - t <= windowMs);
+    if (recent.length < 2) return 0;
+    const first = recent[0], last = recent[recent.length - 1];
+    const base = ((recent.length - 1) * 60000) / Math.max(last - first, 1);
+    const gap = now - last;
+    return Math.round(gap > 60000 / base ? Math.min(base, 60000 / gap) : base);
+  };
+
+  // Knee height above the hip in torso lengths, from 3D world landmarks
+  // (meters, origin at the hip midpoint, y down). Perspective free, so a knee
+  // swinging toward the camera still reads its true lift.
+  RE.worldKneeHeights = function (world) {
+    const ls = world[L.L_SHOULDER], rs = world[L.R_SHOULDER], lh = world[L.L_HIP], rh = world[L.R_HIP];
+    const sm = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2, z: (ls.z + rs.z) / 2 };
+    const hm = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2, z: (lh.z + rh.z) / 2 };
+    const torso = Math.hypot(sm.x - hm.x, sm.y - hm.y, sm.z - hm.z);
+    if (!(torso > 0)) return null;
+    return {
+      torso,
+      kneeL: (hm.y - world[L.L_KNEE].y) / torso,
+      kneeR: (hm.y - world[L.R_KNEE].y) / torso,
+    };
+  };
+
+  RE.computeSignals = function (points, cal, cfg, world) {
     const { confidence, missing } = RE.confidenceOf(points, cfg.visibility.hold);
     const out = { confidence, missing, calibrated: !!cal };
     if (!cal) return out;
@@ -385,6 +494,8 @@
     const lh = b(L.L_HIP), rh = b(L.R_HIP);
     const lk = b(L.L_KNEE), rk = b(L.R_KNEE);
     const sMid = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
+    const nose = b(L.NOSE);
+    const le = b(L.L_ELBOW), re = b(L.R_ELBOW), lw = b(L.L_WRIST), rw = b(L.R_WRIST);
     const hMid = { x: (lh.x + rh.x) / 2, y: (lh.y + rh.y) / 2 };
 
     // lean: shoulder midpoint minus hip midpoint, in S. + = leaning to player's right
@@ -395,11 +506,555 @@
     // knee lift above standing knee height, in T
     out.kneeLiftL = lk.y - cal.kneeBaseL;
     out.kneeLiftR = rk.y - cal.kneeBaseR;
-    // shoulder width now vs calibration: drifts when the player moves closer/farther
+    // the same lift from world landmarks when this profile has a world baseline
+    out.kneeLiftWL = null;
+    out.kneeLiftWR = null;
+    if (world && cal.kneeBaseWL != null) {
+      const k = RE.worldKneeHeights(world);
+      if (k) { out.kneeLiftWL = k.kneeL - cal.kneeBaseWL; out.kneeLiftWR = k.kneeR - cal.kneeBaseWR; }
+    }
+    // what the step detector reads: world lift when available, else image lift
+    const useWorld = cfg.march.liftSource !== 'image' && out.kneeLiftWL != null;
+    out.stepLiftL = useWorld ? out.kneeLiftWL : out.kneeLiftL;
+    out.stepLiftR = useWorld ? out.kneeLiftWR : out.kneeLiftR;
+    // shoulder width and torso length now vs calibration. Both scale with
+    // distance; only shoulder width shrinks when the torso turns, so torso
+    // length tracks distance and their quotient tracks the turn.
     out.shoulderRatio = RE.dist(points[L.L_SHOULDER], points[L.R_SHOULDER]) / cal.shoulderWidth;
-    out.body = { ls, rs, lh, rh, lk, rk, sMid, hMid };
+    out.torsoRatio = RE.dist(RE.mid(points[L.L_SHOULDER], points[L.R_SHOULDER]), RE.mid(points[L.L_HIP], points[L.R_HIP])) / cal.torsoLength;
+    out.body = { ls, rs, lh, rh, lk, rk, sMid, hMid, nose, le, re, lw, rw };
     return out;
   };
+})(globalThis);
+
+// ---- engine/detectors.js ----
+// Locomotion gesture detectors: march steps, high knees (run), torso turn
+// steering, lean, point turn, turn around and wave. Each reads the per-frame signals in body
+// units (S = shoulder width, T = torso length, +x = player's right, +y = up)
+// and pushes events; games only ever see the events and the snapshot.
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+  const L = RE.LM;
+
+  RE.detectors = RE.detectors || new Set();
+  for (const name of ['step', 'run_start', 'run_end', 'turn_left', 'turn_right', 'lean_left', 'lean_right', 'point', 'turn_around', 'wave']) {
+    RE.detectors.add(name);
+  }
+
+  // True when landmark i is tracked this frame (not held at a stale value).
+  const seen = (ctx, i) => {
+    const p = ctx.points[i];
+    return !!p && !p.held && p.v >= ctx.holdVis;
+  };
+
+  // Where a wrist is: the smoothed point when tracked, else MediaPipe's raw
+  // estimate if it lies outside the frame. Raised or outstretched hands
+  // often leave a close portrait or a landscape frame, and the raw estimate
+  // still says which way they went. null when the wrist is simply lost.
+  function wristAt(ctx, i) {
+    if (seen(ctx, i)) return { p: ctx.points[i], offFrame: false };
+    const r = ctx.raw && ctx.raw[i];
+    if (r && (r.x < 0 || r.x > ctx.w || r.y < 0 || r.y > ctx.h)) return { p: r, offFrame: true };
+    return null;
+  }
+
+  // Wrist speeds in S per second (wristAt positions, so off-frame too).
+  class WristSpeed {
+    constructor() { this.prev = null; }
+    update(ctx, out) {
+      const t = ctx.t;
+      const ratio = ctx.cal.torsoLength / ctx.cal.shoulderWidth; // T expressed in S
+      const pos = (i) => { const at = wristAt(ctx, i); return at ? RE.toBody(at.p, ctx.cal) : null; };
+      const now = { t, l: pos(L.L_WRIST), r: pos(L.R_WRIST) };
+      const p = this.prev;
+      this.prev = now;
+      out.wristSpeedL = out.wristSpeedR = 0;
+      if (!p || t <= p.t) return;
+      const dt = (t - p.t) / 1000;
+      const speed = (k) => (now[k] && p[k] ? Math.hypot(now[k].x - p[k].x, (now[k].y - p[k].y) * ratio) / dt : 0);
+      out.wristSpeedL = speed('l');
+      out.wristSpeedR = speed('r');
+    }
+  }
+
+  // March steps and high knees. A step fires on the rising edge of one knee
+  // lifting above the other, so squats (both knees) never count, and legs
+  // must alternate. High knees: startSteps consecutive steps with a peak
+  // lift of run.lift T, spaced at run.cadence or faster, start a run; the run
+  // ends after run.exitMs with no such step.
+  class StepDetector {
+    constructor(cfg) {
+      this.m = cfg.march;
+      this.r = cfg.run;
+      this.e = cfg.effort;
+      this.steps = [];
+      this.lastLeg = null;
+      this.lastStepAt = -Infinity;
+      this.highCount = 0;
+      this.lastHighAt = -Infinity;
+      this.running = false;
+      this.peaks = [];
+      this.legs = {
+        left: { up: true, counted: false, peak: 0, lastStep: -Infinity, interval: Infinity },
+        right: { up: true, counted: false, peak: 0, lastStep: -Infinity, interval: Infinity },
+      };
+    }
+
+    update(ctx, out) {
+      const t = ctx.t;
+      const s = ctx.sig;
+      if (this.running && t - this.lastHighAt > this.r.exitMs) {
+        this.running = false;
+        this.highCount = 0;
+        out.events.push(['run_end', {}]);
+      }
+      const paused = ctx.low || s.hipDrop > this.m.squatPauseDrop || s.stepLiftL == null;
+      if (paused) {
+        // a knee must come back down before it can count again
+        this.legs.left.up = this.legs.right.up = true;
+        this.legs.left.counted = this.legs.right.counted = false;
+      } else {
+        const lifts = {
+          left: s.stepLiftL - Math.max(0, s.stepLiftR),
+          right: s.stepLiftR - Math.max(0, s.stepLiftL),
+        };
+        for (const name of ['left', 'right']) this.updateLeg(name, lifts[name], t, out);
+      }
+      out.cadence = RE.cadenceFromSteps(this.steps, t, this.m.cadenceWindowMs);
+      out.running = this.running;
+      out.kneeLift = this.peaks.length ? this.peaks.reduce((a, b) => a + b, 0) / this.peaks.length : 0;
+      const active = out.cadence > 0;
+      out.effort = active
+        ? RE.clamp(0.7 * RE.clamp(out.cadence / this.e.fullCadence, 0, 1) + 0.3 * RE.clamp(out.kneeLift / this.e.fullLift, 0, 1), 0, 1)
+        : 0;
+    }
+
+    updateLeg(name, lift, t, out) {
+      const leg = this.legs[name];
+      if (!leg.up) {
+        if (lift < this.m.liftOn) return;
+        leg.up = true;
+        leg.peak = lift;
+        leg.counted = false;
+        const sinceLeg = t - leg.lastStep;
+        const alternates = this.lastLeg !== name || sinceLeg >= this.m.sameLegMinMs;
+        if (sinceLeg >= this.m.debounceMs && alternates) {
+          leg.counted = true;
+          leg.interval = t - this.lastStepAt;
+          leg.lastStep = t;
+          this.lastLeg = name;
+          this.lastStepAt = t;
+          this.steps.push(t);
+          if (this.steps.length > 64) this.steps.shift();
+          out.events.push(['step', { leg: name }]);
+        }
+        return;
+      }
+      if (lift > leg.peak) leg.peak = lift;
+      if (lift >= this.m.liftOff) return;
+      // knee back down: the step is complete, judge it for high knees
+      leg.up = false;
+      if (!leg.counted) return;
+      leg.counted = false;
+      this.peaks.push(leg.peak);
+      if (this.peaks.length > 4) this.peaks.shift();
+      const high = leg.peak >= this.r.lift;
+      const fast = leg.interval <= 60000 / this.r.cadence;
+      if (!high) { this.highCount = 0; return; }
+      this.highCount++;
+      if (this.running) {
+        if (fast) this.lastHighAt = t;
+      } else if (this.highCount >= this.r.startSteps && fast) {
+        this.running = true;
+        this.lastHighAt = t;
+        out.events.push(['run_start', {}]);
+      }
+    }
+  }
+
+  // Lean: shoulder midpoint x minus hip midpoint x, through a deadzone,
+  // scaled to -1..1. Fast wrists (punches, swipes) switch it off, and the
+  // same suppression gates turn steering below.
+  class LeanDetector {
+    constructor(cfg) {
+      this.c = cfg.lean;
+      this.suppressUntil = -Infinity;
+      this.armed = { left: true, right: true };
+    }
+
+    update(ctx, out) {
+      const t = ctx.t;
+      const s = ctx.sig;
+      const speed = Math.max(out.wristSpeedL, out.wristSpeedR);
+      if (speed > this.c.wristSpeedMax) this.suppressUntil = t + this.c.suppressHoldMs;
+      out.steerSuppressed = t < this.suppressUntil;
+
+      let steer = 0;
+      if (!ctx.low && !out.steerSuppressed) {
+        const mag = (Math.abs(s.lean) - this.c.deadzone) / (this.c.full - this.c.deadzone);
+        if (mag > 0) steer = Math.sign(s.lean) * Math.min(mag, 1);
+      }
+      out.lean = steer;
+
+      for (const side of ['left', 'right']) {
+        const level = side === 'left' ? -steer : steer;
+        if (this.armed[side] && level >= this.c.eventLevel) {
+          this.armed[side] = false;
+          out.events.push(['lean_' + side, { lean: steer }]);
+        } else if (!this.armed[side] && level < this.c.eventReset) {
+          this.armed[side] = true;
+        }
+      }
+    }
+  }
+
+  // Torso turn steering. Shoulder width shrinks with the cosine of torso yaw
+  // while torso length does not, and both scale with distance, so
+  //   cos(yaw) = (shoulder width / torso length) / calibrated ratio
+  // reads the same whether the player stands closer or farther. That gives
+  // the size of the turn; the direction comes from which shoulder is nearer
+  // the camera in world landmarks, cross-checked against the nose offset
+  // from the shoulder midpoint (the nose sits in front of the shoulders).
+  class TurnDetector {
+    constructor(cfg) {
+      this.c = cfg.turn;
+      this.armed = { left: true, right: true };
+    }
+
+    direction(ctx) {
+      const c = this.c;
+      let depth = 0;
+      const w = ctx.world;
+      if (w && seen(ctx, L.L_SHOULDER) && seen(ctx, L.R_SHOULDER)) {
+        const ls = w[L.L_SHOULDER], rs = w[L.R_SHOULDER];
+        const width = Math.hypot(ls.x - rs.x, ls.y - rs.y, ls.z - rs.z);
+        // world z grows away from the camera: right shoulder farther = turned right
+        const dz = width > 0 ? (rs.z - ls.z) / width : 0;
+        if (Math.abs(dz) >= c.depthMin) depth = Math.sign(dz);
+      }
+      let nose = 0;
+      if (seen(ctx, L.NOSE)) {
+        const off = ctx.sig.body.nose.x - ctx.sig.body.sMid.x;
+        if (Math.abs(off) >= c.noseMin) nose = Math.sign(off);
+      }
+      // both cues present but disagreeing: do not steer
+      if (depth && nose && depth !== nose) return 0;
+      return depth || nose;
+    }
+
+    update(ctx, out) {
+      const c = this.c;
+      const s = ctx.sig;
+      out.turn = 0;
+      out.yaw = 0;
+      if (ctx.low || !(s.torsoRatio > 0)) return;
+      const cosYaw = RE.clamp(s.shoulderRatio / s.torsoRatio, 0, 1);
+      const mag = (Math.acos(cosYaw) * 180) / Math.PI;
+      const dir = this.direction(ctx);
+      out.yaw = dir * mag;
+      const k = (mag - c.deadzone) / (c.full - c.deadzone);
+      if (dir && k > 0 && !out.steerSuppressed) out.turn = dir * Math.min(k, 1);
+
+      for (const side of ['left', 'right']) {
+        const level = side === 'left' ? -out.turn : out.turn;
+        if (this.armed[side] && level >= c.eventLevel) {
+          this.armed[side] = false;
+          out.events.push(['turn_' + side, { turn: out.turn }]);
+        } else if (!this.armed[side] && level < c.eventReset) {
+          this.armed[side] = true;
+        }
+      }
+    }
+  }
+
+  // Elbow angle in degrees: 3D world landmarks when the wrist is tracked,
+  // else in the image from the wrist point given.
+  function elbowAngle(ctx, sh, el, wr, wristPoint, offFrame) {
+    const w = ctx.world;
+    if (!offFrame && w && w[sh] && w[el] && w[wr]) return RE.jointAngle(w[sh], w[el], w[wr]);
+    const p = ctx.points;
+    const flat = (q) => ({ x: q.x, y: q.y, z: 0 });
+    return RE.jointAngle(flat(p[sh]), flat(p[el]), flat(wristPoint));
+  }
+
+  // Point turn: one arm straight out sideways, wrist still, held. Both arms
+  // out (a T pose) is not a point, and a swipe passing through is not either.
+  class PointDetector {
+    constructor(cfg) {
+      this.c = cfg.point;
+      this.since = { left: null, right: null };
+      this.fired = { left: false, right: false };
+      this.lastFire = -Infinity;
+    }
+
+    candidate(ctx, side, out) {
+      const [sh, el, wr] = side === 'left' ? [L.L_SHOULDER, L.L_ELBOW, L.L_WRIST] : [L.R_SHOULDER, L.R_ELBOW, L.R_WRIST];
+      const at = wristAt(ctx, wr);
+      if (!seen(ctx, el) || !at) return false;
+      const b = ctx.sig.body;
+      const s = side === 'left' ? b.ls : b.rs;
+      const w = RE.toBody(at.p, ctx.cal);
+      const outward = side === 'left' ? s.x - w.x : w.x - s.x;
+      if (outward < this.c.wristOut || w.y < s.y - this.c.maxBelow) return false;
+      const speed = side === 'left' ? out.wristSpeedL : out.wristSpeedR;
+      if (speed > this.c.maxWristSpeed) return false;
+      return elbowAngle(ctx, sh, el, wr, at.p, at.offFrame) >= this.c.elbowMin;
+    }
+
+    update(ctx, out) {
+      const t = ctx.t;
+      const cand = ctx.low ? { left: false, right: false } : { left: this.candidate(ctx, 'left', out), right: this.candidate(ctx, 'right', out) };
+      if (cand.left && cand.right) cand.left = cand.right = false;
+      for (const side of ['left', 'right']) {
+        if (!cand[side]) { this.since[side] = null; this.fired[side] = false; continue; }
+        if (this.since[side] === null) this.since[side] = t;
+        if (!this.fired[side] && t - this.since[side] >= this.c.holdMs && t - this.lastFire >= this.c.cooldownMs) {
+          this.fired[side] = true;
+          this.lastFire = t;
+          out.events.push(['point', { side }]);
+        }
+      }
+    }
+  }
+
+  // Is this wrist overhead? A wrist that left through the top of the frame
+  // counts too, since raised hands often leave a landscape frame.
+  function wristOverhead(ctx, i, aboveNose) {
+    const at = wristAt(ctx, i);
+    if (!at) return false;
+    if (at.offFrame) return at.p.y < 0;
+    return RE.toBody(at.p, ctx.cal).y - ctx.sig.body.nose.y >= aboveNose;
+  }
+
+  // Turn around: both wrists above the head, held.
+  class TurnAroundDetector {
+    constructor(cfg) {
+      this.c = cfg.turnAround;
+      this.since = null;
+      this.fired = false;
+      this.lastFire = -Infinity;
+    }
+
+    update(ctx, out) {
+      const t = ctx.t;
+      const up = !ctx.low && wristOverhead(ctx, L.L_WRIST, this.c.aboveNose) && wristOverhead(ctx, L.R_WRIST, this.c.aboveNose);
+      out.handsOverhead = up;
+      if (!up) { this.since = null; this.fired = false; return; }
+      if (this.since === null) this.since = t;
+      if (!this.fired && t - this.since >= this.c.holdMs && t - this.lastFire >= this.c.cooldownMs) {
+        this.fired = true;
+        this.lastFire = t;
+        out.events.push(['turn_around', {}]);
+      }
+    }
+  }
+
+  // Wave: wrist well above its shoulder, swinging side to side. Counts direction
+  // changes of at least minSwing S; enough of them inside the window fire.
+  class WaveDetector {
+    constructor(cfg) {
+      this.c = cfg.wave;
+      this.hands = { left: fresh(), right: fresh() };
+      this.lastFire = -Infinity;
+    }
+
+    update(ctx, out) {
+      const t = ctx.t;
+      const b = ctx.sig.body;
+      for (const hand of ['left', 'right']) {
+        const h = this.hands[hand];
+        const wi = hand === 'left' ? L.L_WRIST : L.R_WRIST;
+        const s = hand === 'left' ? b.ls : b.rs;
+        const w = hand === 'left' ? b.lw : b.rw;
+        // both hands overhead is the turn-around gesture, not a wave
+        if (ctx.low || out.handsOverhead || !seen(ctx, wi) || w.y - s.y < this.c.minAbove) { this.hands[hand] = fresh(); continue; }
+        const x = w.x - s.x;
+        let reversed = false;
+        if (h.dir === 0) {
+          h.lo = Math.min(h.lo, x);
+          h.hi = Math.max(h.hi, x);
+          if (x - h.lo >= this.c.minSwing) { h.dir = 1; h.ext = x; }
+          else if (h.hi - x >= this.c.minSwing) { h.dir = -1; h.ext = x; }
+        } else if (h.dir * (x - h.ext) > 0) {
+          h.ext = x;
+        } else if (Math.abs(x - h.ext) >= this.c.minSwing) {
+          h.dir = -h.dir;
+          h.ext = x;
+          reversed = true;
+        }
+        if (!reversed) continue;
+        h.reversals = h.reversals.filter((r) => t - r <= this.c.windowMs);
+        h.reversals.push(t);
+        if (h.reversals.length >= this.c.reversals && t - this.lastFire >= this.c.cooldownMs) {
+          this.lastFire = t;
+          h.reversals = [];
+          out.events.push(['wave', { hand }]);
+        }
+      }
+    }
+  }
+
+  function fresh() {
+    return { dir: 0, ext: 0, lo: Infinity, hi: -Infinity, reversals: [] };
+  }
+
+  // All locomotion detectors, run in order once per frame.
+  // ctx: {t (ms), w, h, points (smoothed px), raw (unsmoothed px), world, cal, sig, low, holdVis}
+  // Returns {events: [[name, payload]], turn, yaw, lean, cadence, running, effort, ...}
+  RE.LocomotionDetectors = class LocomotionDetectors {
+    constructor(cfg) {
+      this.list = [new WristSpeed(), new StepDetector(cfg), new LeanDetector(cfg), new TurnDetector(cfg), new TurnAroundDetector(cfg), new PointDetector(cfg), new WaveDetector(cfg)];
+    }
+    update(ctx) {
+      const out = { events: [], turn: 0, yaw: 0, lean: 0, steerSuppressed: false, cadence: 0, running: false, effort: 0, kneeLift: 0, handsOverhead: false, wristSpeedL: 0, wristSpeedR: 0 };
+      for (const d of this.list) d.update(ctx, out);
+      return out;
+    }
+  };
+  RE.StepDetector = StepDetector;
+})(globalThis);
+
+// ---- engine/locomotion.js ----
+// Locomotion state machine (spec: "Locomotion state machine"). Marching
+// drives you forward, a torso turn inside a short arc steers, and big turns
+// are discrete gestures, so the player never turns away from the camera. It
+// reads events (step, run_start, run_end, turn_around, point) and the
+// cadence and turn signals, so camera and touch demo drive it the same way.
+//
+// The game describes its movement model with engine.set_movement():
+//   rails: true snaps movement to paths (manhattan-miles): turn slides you
+//          sideways, a point at an intersection takes that street
+//   rails: false is free movement (stomp-city): turn sets the turn rate
+//   at_intersection(), branch_bearing(side), target_bearing() are optional hooks
+(function (g) {
+  'use strict';
+  const RE = g.RepEngine;
+
+  class Locomotion {
+    constructor(cfg) {
+      this.c = cfg.locomotion;
+      this.model = { rails: false };
+      this.reset();
+    }
+
+    reset() {
+      this.state = 'idle'; // idle | walk | run
+      this.speed = 0;
+      this.targetSpeed = 0;
+      this.rampFrom = 0;   // speed when the target last changed
+      this.lastTarget = 0;
+      this.facing = 0;     // degrees, + = turning right
+      this.lateral = 0;    // -1..1 across the path (rails only)
+      this.running = false;
+      this.lastStepAt = -Infinity;
+      this.interval = Infinity;
+      this.pending = { turnAround: false, point: null };
+      this.t = null;
+      this.stats = { activeMs: 0, runMs: 0, cadenceMs: 0, peakCadence: 0 };
+    }
+
+    setModel(model) { this.model = Object.assign({ rails: false }, model); }
+
+    onEvent(name, payload, t) {
+      if (name === 'step') {
+        if (isFinite(this.lastStepAt)) this.interval = t - this.lastStepAt;
+        this.lastStepAt = t;
+      } else if (name === 'run_start') this.running = true;
+      else if (name === 'run_end') this.running = false;
+      else if (name === 'turn_around') this.pending.turnAround = true;
+      else if (name === 'point' && payload) this.pending.point = payload.side;
+    }
+
+    // t in ms; sig: {cadence_spm, turn}; mode: explore | combat | transit
+    update(t, sig, mode) {
+      const dt = this.t === null ? 0 : RE.clamp((t - this.t) / 1000, 0, 0.1);
+      this.t = t;
+      const c = this.c;
+      const m = this.model;
+      const point = this.pending.point;
+      const turnAround = this.pending.turnAround;
+      this.pending.point = null;
+      this.pending.turnAround = false;
+
+      if (mode === 'transit') {
+        // subway, bus or taxi ride: no input, logged as rest
+        this.targetSpeed = 0;
+        this.speed = 0;
+      } else if (mode === 'combat') {
+        // the combat module owns the body; face the target
+        this.targetSpeed = 0;
+        this.speed = 0;
+        if (m.target_bearing) this.facing = m.target_bearing();
+      } else if (turnAround) {
+        // both hands overhead: the only way to reverse
+        this.facing = wrap(this.facing + 180);
+      } else if (m.rails && point && m.at_intersection && m.at_intersection() && m.branch_bearing) {
+        // point an arm to take that street, like hailing a cab
+        this.facing = wrap(m.branch_bearing(point));
+      } else {
+        // no step for stopAfterMs (or 1.5 step intervals at slow cadences,
+        // counting intervals up to the slowest walking cadence): stop
+        const interval = isFinite(this.interval) ? Math.min(this.interval, 60000 / c.walkCadence) : 0;
+        const quiet = t - this.lastStepAt > Math.max(c.stopAfterMs, c.stopIntervals * interval);
+        const cadence = sig.cadence_spm || 0;
+        if (this.running && !quiet) {
+          this.targetSpeed = c.runSpeed;
+        } else if (cadence >= c.walkCadence && !quiet) {
+          this.targetSpeed = c.walkSpeed * RE.clamp(cadence / c.refCadence, c.walkScale[0], c.walkScale[1]);
+        } else {
+          this.targetSpeed = 0;
+        }
+        if (m.rails) {
+          // turning slides you across the sidewalk; rails handle the street path
+          this.lateral = sig.turn || 0;
+        } else {
+          // free movement: turn sets the turn rate
+          this.facing = wrap(this.facing + (sig.turn || 0) * c.maxTurnRate * dt);
+        }
+      }
+
+      // ramp linearly toward the target so cadence noise never jerks the
+      // camera: a change takes rampMs, coasting to a stop takes stopMs
+      if (mode === 'explore') {
+        if (this.targetSpeed !== this.lastTarget) { this.rampFrom = this.speed; this.lastTarget = this.targetSpeed; }
+        const ms = this.targetSpeed === 0 ? c.stopMs : c.rampMs;
+        const step = (Math.abs(this.targetSpeed - this.rampFrom) * dt * 1000) / ms;
+        const diff = this.targetSpeed - this.speed;
+        this.speed = Math.abs(diff) <= step ? this.targetSpeed : this.speed + Math.sign(diff) * step;
+      }
+      this.state = this.speed === 0 && this.targetSpeed === 0 ? 'idle' : this.running && this.targetSpeed === c.runSpeed ? 'run' : 'walk';
+
+      if (dt > 0 && this.state !== 'idle') {
+        const cad = sig.cadence_spm || 0;
+        this.stats.activeMs += dt * 1000;
+        if (this.state === 'run') this.stats.runMs += dt * 1000;
+        this.stats.cadenceMs += cad * dt * 1000;
+        this.stats.peakCadence = Math.max(this.stats.peakCadence, cad);
+      }
+    }
+
+    snapshot() {
+      return { state: this.state, speed: this.speed, target_speed: this.targetSpeed, facing: this.facing, lateral: this.lateral };
+    }
+
+    summary() {
+      const s = this.stats;
+      return {
+        activeMs: Math.round(s.activeMs),
+        runMs: Math.round(s.runMs),
+        avgCadence: s.activeMs > 0 ? Math.round(s.cadenceMs / s.activeMs) : 0,
+        peakCadence: Math.round(s.peakCadence),
+      };
+    }
+  }
+
+  function wrap(deg) {
+    const d = deg % 360;
+    return d < 0 ? d + 360 : d;
+  }
+
+  RE.Locomotion = Locomotion;
 })(globalThis);
 
 // ---- engine/calibration.js ----
@@ -412,19 +1067,19 @@
   const L = RE.LM;
 
   // Move test prompts from the spec. A prompt only runs once a detector for
-  // its event is registered (milestone 2); until then the step is skipped.
+  // its event is registered; until then the step is skipped.
   RE.MOVE_TEST = Object.freeze([
     { id: 'march', prompt: 'March four steps', event: 'step', count: 4 },
     { id: 'high_knees', prompt: 'Two high knees', event: 'run_start', count: 1 },
-    { id: 'lean_left', prompt: 'Lean left', event: 'lean_left', count: 1 },
-    { id: 'lean_right', prompt: 'Lean right', event: 'lean_right', count: 1 },
+    { id: 'turn_left', prompt: 'Turn your body left', event: 'turn_left', count: 1 },
+    { id: 'turn_right', prompt: 'Turn your body right', event: 'turn_right', count: 1 },
     { id: 'point_left', prompt: 'Point left', event: 'point', match: { side: 'left' }, count: 1 },
     { id: 'point_right', prompt: 'Point right', event: 'point', match: { side: 'right' }, count: 1 },
     { id: 'squat', prompt: 'One squat', event: 'squat', count: 1 },
     { id: 'jab_cross', prompt: 'Jab, cross', event: 'strike', count: 2 },
   ]);
 
-  // Event names whose detectors exist. Milestone 2 adds to this set.
+  // Event names whose detectors exist (detectors.js registers them).
   RE.detectors = RE.detectors || new Set();
 
   function median(values) {
@@ -450,7 +1105,8 @@
   };
 
   class Calibrator {
-    constructor(cfg, presetId) {
+    // opts.moveTest: false skips the move test (quick re-baseline, tests).
+    constructor(cfg, presetId, opts = {}) {
       this.cfg = cfg;
       this.presetId = presetId;
       this.state = 'framing';
@@ -460,8 +1116,9 @@
       this.result = null;
       this.testIndex = 0;
       this.testHits = 0;
-      this.tests = RE.MOVE_TEST.filter((t) => RE.detectors.has(t.event));
-      this.skippedTests = RE.MOVE_TEST.length - this.tests.length;
+      this.tests = opts.moveTest === false ? [] : RE.MOVE_TEST.filter((t) => RE.detectors.has(t.event));
+      // prompts left out because their detector does not exist yet
+      this.skippedTests = opts.moveTest === false ? 0 : RE.MOVE_TEST.length - this.tests.length;
     }
 
     // frame: {points (smoothed px), w, h, t (ms)}. Returns a status object.
@@ -490,7 +1147,7 @@
       }
 
       if (this.state === 'baseline') {
-        this.samples.push(sample(points, w, h));
+        this.samples.push(sample(points, frame.world));
         if (t - this.baselineSince >= this.cfg.calibration.baselineMs) {
           this.result = this._finish(w, h);
           this.state = this.tests.length ? 'move_test' : 'done';
@@ -553,7 +1210,7 @@
     _finish(w, h) {
       const m = (k) => median(this.samples.map((s) => s[k]));
       const cal = {
-        version: 1,
+        version: RE.PROFILE_VERSION,
         preset: this.presetId,
         orientation: RE.orientationOf(w, h),
         videoW: w,
@@ -568,12 +1225,18 @@
       // Knee baselines in body units, relative to the calibrated hip.
       cal.kneeBaseL = median(this.samples.map((s) => (cal.hipMidY - s.kneeLY) / cal.torsoLength));
       cal.kneeBaseR = median(this.samples.map((s) => (cal.hipMidY - s.kneeRY) / cal.torsoLength));
+      // World landmark knee baselines, when the source provides world landmarks.
+      const ws = this.samples.filter((s) => s.world);
+      if (ws.length >= this.samples.length / 2) {
+        cal.kneeBaseWL = median(ws.map((s) => s.world.kneeL));
+        cal.kneeBaseWR = median(ws.map((s) => s.world.kneeR));
+      }
       return cal;
     }
   }
   RE.Calibrator = Calibrator;
 
-  function sample(p) {
+  function sample(p, world) {
     const sMid = RE.mid(p[L.L_SHOULDER], p[L.R_SHOULDER]);
     const hMid = RE.mid(p[L.L_HIP], p[L.R_HIP]);
     return {
@@ -584,10 +1247,13 @@
       sideSign: Math.sign(p[L.R_SHOULDER].x - p[L.L_SHOULDER].x),
       kneeLY: p[L.L_KNEE].y,
       kneeRY: p[L.R_KNEE].y,
+      world: world ? RE.worldKneeHeights(world) : null,
     };
   }
 
-  // Saved player profiles, keyed by preset and orientation.
+  // Saved player profiles, keyed by preset and orientation. Version 2 added
+  // the world landmark knee baselines; older profiles ask for recalibration.
+  RE.PROFILE_VERSION = 2;
   RE.profiles = {
     key: (preset, orientation) => `rep-engine:profile:${preset}:${orientation}`,
     load(preset, orientation) {
@@ -595,14 +1261,14 @@
       if (!raw) return null;
       try {
         const cal = JSON.parse(raw);
-        return cal && cal.version === 1 && cal.shoulderWidth > 0 && cal.torsoLength > 0 ? cal : null;
+        return cal && cal.version === RE.PROFILE_VERSION && cal.shoulderWidth > 0 && cal.torsoLength > 0 ? cal : null;
       } catch (_) { return null; }
     },
     save(cal) { RE.storage.set(this.key(cal.preset, cal.orientation), JSON.stringify(cal)); },
     clear(preset, orientation) { RE.storage.remove(this.key(preset, orientation)); },
   };
 
-  // Fires once when shoulder width stays more than driftRatio off baseline
+  // Fires once when torso length stays more than driftRatio off baseline
   // for driftHoldMs, then re-arms when the player is back in range.
   class DriftMonitor {
     constructor(cfg) { this.cfg = cfg.calibration; this.since = null; this.fired = false; }
@@ -865,21 +1531,12 @@
 // games are playable and testable from a phone with no tracking running.
 //   Left thumb zone: tap in rhythm = march (tap speed sets cadence).
 //                    Double-tap and hold = run.
-//   Right thumb zone: drag sideways = lean.
+//   Right thumb zone: drag sideways = turn.
 //   Buttons: point L/R, turn around, jab, cross, hook, guard (hold),
 //            squat, drive up, stomp.
 (function (g) {
   'use strict';
   const RE = g.RepEngine;
-
-  // Steps per minute from step timestamps inside the window.
-  RE.cadenceFromSteps = function (times, now, windowMs) {
-    const recent = times.filter((t) => now - t <= windowMs);
-    if (recent.length < 2) return 0;
-    // average interval of recent steps, but decay once steps stop
-    const span = now - recent[0];
-    return Math.round(((recent.length - 1) * 60000) / Math.max(span, recent[recent.length - 1] - recent[0], 1));
-  };
 
   // Pure state for demo input; the DOM layer below only calls these methods.
   class DemoInput {
@@ -888,7 +1545,7 @@
       this.emit = emit;
       this.steps = [];
       this.leg = 'left';
-      this.lean = 0;
+      this.turn = 0;
       this.guard = false;
       this.squatUntil = 0;
       this.running = false;
@@ -928,7 +1585,7 @@
       g.clearTimeout(this.runTimer);
       this.emit('run_end', {});
     }
-    setLean(v) { this.lean = RE.clamp(v, -1, 1); }
+    setTurn(v) { this.turn = RE.clamp(v, -1, 1); }
     press(action, now) {
       const strike = (hand, type) => this.emit('strike', { hand, type, power: 1 });
       switch (action) {
@@ -949,8 +1606,9 @@
       return {
         cadence_spm: cadence,
         effort: RE.clamp(cadence / this.cfg.runCadence, 0, 1),
-        speed: 0, // locomotion speed arrives with the state machine (milestone 2)
-        lean: this.lean,
+        speed: 0, // the engine fills this in from the locomotion state machine
+        turn: this.turn,
+        lean: 0,
         squat_depth: now < this.squatUntil ? 1 : 0,
         guard_up: this.guard,
         confidence: 1,
@@ -965,6 +1623,16 @@
     ['jab', 'Jab'], ['cross', 'Cross'], ['hook', 'Hook'],
     ['guard', 'Guard'], ['squat', 'Squat'], ['drive_up', 'Drive up'], ['stomp', 'Stomp'],
   ];
+  RE.DEMO_BUTTONS = Object.freeze(BUTTONS.map(([action]) => action));
+
+  // Which buttons a game shows: opts.buttons lists action ids (see
+  // RE.DEMO_BUTTONS), in the standard order; omitted shows all. Unknown ids throw
+  // so a typo never silently hides a control.
+  RE.demoButtons = function (opts = {}) {
+    if (!opts.buttons) return BUTTONS.slice();
+    for (const id of opts.buttons) if (!RE.DEMO_BUTTONS.includes(id)) throw new Error('unknown demo button ' + id);
+    return BUTTONS.filter(([action]) => opts.buttons.includes(action));
+  };
 
   const CSS = `
 .re-demo{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr auto;gap:8px;padding:8px;pointer-events:none;font:600 13px/1.2 system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
@@ -976,8 +1644,9 @@
 `;
 
   // DOM layer: builds the touch controls inside `container` (position: relative).
+  // opts.buttons: action ids to show (default all).
   RE.DemoController = class DemoController {
-    constructor(container, input) {
+    constructor(container, input, opts = {}) {
       this.input = input;
       const doc = container.ownerDocument;
       if (!doc.getElementById('re-demo-style')) {
@@ -993,10 +1662,13 @@
       left.textContent = 'Tap to march · double-tap and hold to run';
       const right = doc.createElement('div');
       right.className = 're-demo-zone';
-      right.textContent = 'Drag sideways to lean';
+      right.textContent = 'Drag sideways to turn';
       const bar = doc.createElement('div');
       bar.className = 're-demo-buttons';
-      for (const [action, label] of BUTTONS) {
+      const buttons = RE.demoButtons(opts);
+      bar.style.gridTemplateColumns = `repeat(${Math.max(1, Math.min(5, buttons.length))},1fr)`;
+      if (!buttons.length) bar.hidden = true;
+      for (const [action, label] of buttons) {
         const b = doc.createElement('button');
         b.type = 'button';
         b.textContent = label;
@@ -1027,9 +1699,9 @@
       right.addEventListener('pointermove', (e) => {
         if (startX === null) return;
         const width = right.getBoundingClientRect().width || 1;
-        input.setLean((e.clientX - startX) / (width * 0.4));
+        input.setTurn((e.clientX - startX) / (width * 0.4));
       });
-      const rightUp = () => { startX = null; right.classList.remove('is-active'); input.setLean(0); };
+      const rightUp = () => { startX = null; right.classList.remove('is-active'); input.setTurn(0); };
       right.addEventListener('pointerup', rightUp);
       right.addEventListener('pointercancel', rightUp);
 
@@ -1049,10 +1721,12 @@
 
   const BARS = [
     // [label, getter, min, max]
+    ['turn', (s) => s.turn, -1, 1],
     ['lean', (s) => s.lean, -1, 1],
     ['squat', (s) => s.squat_depth, 0, 1],
     ['cadence', (s) => s.cadence_spm, 0, 220],
     ['effort', (s) => s.effort, 0, 1],
+    ['speed', (s) => s.speed, 0, 3.5],
     ['conf', (s) => s.confidence, 0, 1],
   ];
 
@@ -1133,7 +1807,7 @@
       // panel
       const s = d.signals;
       const pad = 10, bw = 150, rowH = 18;
-      const lines = 2 + BARS.length + 1 + this.log.length;
+      const lines = 3 + BARS.length + 1 + this.log.length;
       const panelH = pad * 2 + lines * rowH;
       const panelW = Math.min(W - 16, 300);
       ctx.fillStyle = 'rgba(0,0,0,.6)';
@@ -1151,6 +1825,8 @@
       const text = (str, color = '#fff') => { ctx.fillStyle = color; ctx.fillText(fit(str), 8 + pad, y); y += rowH; };
       text(`${d.source} · ${d.fps ? d.fps.toFixed(0) + ' fps' : '-- fps'} · ${d.mode}`);
       text(d.cal ? `cal ${d.cal.orientation} · S ${d.cal.shoulderWidth.toFixed(0)}px T ${d.cal.torsoLength.toFixed(0)}px` : 'not calibrated', d.cal ? '#cfe' : '#fc8');
+      const m = d.locomotion;
+      text(m ? `${m.state} · facing ${m.facing.toFixed(0)}° · lateral ${m.lateral.toFixed(2)}` : '', '#cfe');
       for (const [label, get, lo, hi] of BARS) {
         const v = s ? get(s) : null;
         ctx.fillStyle = '#fff';
@@ -1217,7 +1893,9 @@
 //   await engine.start();             // camera + pose
 //   await engine.calibrate();         // resolves with the saved profile
 //   engine.on('step', ({ leg }) => ...);
+//   engine.set_movement({ rails: false }); // free movement, lean sets turn rate
 //   const s = engine.signals();       // per-frame snapshot
+//   const m = engine.locomotion();    // speed, facing, lateral, state
 (function (g) {
   'use strict';
   const RE = g.RepEngine;
@@ -1244,6 +1922,9 @@
       smoother: new RE.LandmarkSmoother(cfg.smoothing, cfg.visibility.hold),
       drift: new RE.DriftMonitor(cfg),
       recorder: new RE.Recorder(cfg),
+      detectors: new RE.LocomotionDetectors(cfg),
+      det: null,
+      loco: new RE.Locomotion(cfg),
       demoInput: null,
       demoUi: null,
       frame: null,
@@ -1254,12 +1935,19 @@
       session: { startedAt: null, frames: 0, counts: {} },
     };
 
-    // Count every event for the session summary and feed the move test.
+    // Count every event for the session summary, feed the move test and the
+    // locomotion state machine (camera and demo events alike).
     emitter.on('*', (name, payload) => {
       if (name === 'frame' || name === 'calibration') return;
       st.session.counts[name] = (st.session.counts[name] || 0) + 1;
       if (st.calibrator) st.calibrator.onEvent(name, payload);
+      st.loco.onEvent(name, payload, clock());
     });
+
+    // Event time: frame time for camera and replay, wall clock for demo.
+    function clock() {
+      return st.source === 'demo' || !st.raw ? RE.now() : st.raw.t;
+    }
 
     function preset() { return RE.presets[st.presetId]; }
 
@@ -1269,6 +1957,8 @@
       // Smooth in calibrated body scale from now on (see LandmarkSmoother).
       st.scaleRef = cal ? cal.shoulderWidth : null;
       st.smoother.reset();
+      st.detectors = new RE.LocomotionDetectors(cfg);
+      st.det = null;
     }
 
     function ingest(raw) {
@@ -1291,7 +1981,7 @@
           const ls = px[RE.LM.L_SHOULDER], rs = px[RE.LM.R_SHOULDER];
           if (ls.v >= cfg.visibility.hold && rs.v >= cfg.visibility.hold) st.scaleRef = RE.dist(ls, rs) || null;
         }
-        const sm = st.smoother.update(px, RE.frameWorld(raw), raw.t / 1000, st.scaleRef || 1);
+        const sm = st.smoother.update(px, RE.frameWorld(raw), raw.t / 1000, st.scaleRef || 1, cfg.smoothing.worldUnit);
         points = sm.points;
         world = sm.world;
       }
@@ -1299,7 +1989,7 @@
 
       if (st.calibrator) runCalibrator();
 
-      const sig = points ? RE.computeSignals(points, st.cal, cfg) : { confidence: 0, missing: RE.REQUIRED.map((i) => RE.LM_NAMES[i]), calibrated: !!st.cal };
+      const sig = points ? RE.computeSignals(points, st.cal, cfg, world) : { confidence: 0, missing: RE.REQUIRED.map((i) => RE.LM_NAMES[i]), calibrated: !!st.cal };
       st.sig = sig;
 
       // confidence transitions
@@ -1308,14 +1998,26 @@
       if (!low && st.lowConfidence) emitter.emit('confidence_ok', {});
       st.lowConfidence = low;
 
-      // drift: player moved closer or farther than the baseline
-      if (st.cal && !low && st.drift.update(sig.shoulderRatio, raw.t)) {
-        emitter.emit('recalibrate_suggested', { reason: 'distance', shoulderRatio: sig.shoulderRatio });
+      // drift: player moved closer or farther than the baseline. Torso length,
+      // not shoulder width, so a torso turn is never mistaken for distance.
+      if (st.cal && !low && st.drift.update(sig.torsoRatio, raw.t)) {
+        emitter.emit('recalibrate_suggested', { reason: 'distance', torsoRatio: sig.torsoRatio });
       }
 
       if (st.source !== 'demo') {
+        // gesture detectors, then the state machine reads their events
+        st.det = st.cal && points
+          ? st.detectors.update({ t: raw.t, w: raw.w, h: raw.h, points, raw: px, world, cal: st.cal, sig, low, holdVis: cfg.visibility.hold })
+          : null;
+        if (st.det) for (const [name, payload] of st.det.events) emitter.emit(name, payload);
+        const det = st.det;
+        st.loco.update(raw.t, { cadence_spm: det ? det.cadence : 0, turn: det ? det.turn : 0 }, st.mode);
         st.snapshot = Object.assign(emptySnapshot(), {
-          lean: sig.lean != null && !low ? sig.lean : 0,
+          cadence_spm: det ? det.cadence : 0,
+          effort: det ? det.effort : 0,
+          speed: st.loco.speed,
+          turn: det ? det.turn : 0,
+          lean: det ? det.lean : 0,
           squat_depth: sig.squatDepth != null && !low ? sig.squatDepth : 0,
           confidence: sig.confidence,
         });
@@ -1342,6 +2044,8 @@
 
     function runCalibrator() {
       const status = st.calibrator.update(st.frame);
+      // the move test needs live detectors: use the fresh baseline for it
+      if (status.state === 'move_test' && st.cal !== st.calibrator.result) setCal(st.calibrator.result);
       st.calStatus = status;
       emitter.emit('calibration', status);
       if (!headless && status.prompt && status.prompt !== st.lastPrompt) {
@@ -1352,7 +2056,7 @@
         const cal = status.result;
         RE.profiles.save(cal);
         st.calibrator = null;
-        setCal(cal);
+        if (st.cal !== cal) setCal(cal);
         st.profileChecked.add(cal.orientation);
         emitter.emit('calibrated', { cal, fromProfile: false, skippedTests: status.skippedTests });
         if (st.calPromise) { st.calPromise.resolve(cal); st.calPromise = null; }
@@ -1398,11 +2102,11 @@
       stop() { stopSource(); api.disable_demo(); },
 
       // Runs framing check, baseline capture and move test. Resolves with
-      // the saved profile.
-      calibrate(presetId) {
+      // the saved profile. opts.moveTest: false skips the move test.
+      calibrate(presetId, opts) {
         if (presetId && RE.presets[presetId]) st.presetId = presetId;
         if (st.calPromise) st.calPromise.reject(new Error('calibration restarted'));
-        st.calibrator = new RE.Calibrator(cfg, st.presetId);
+        st.calibrator = new RE.Calibrator(cfg, st.presetId, opts);
         st.lastPrompt = '';
         return new Promise((resolve, reject) => { st.calPromise = { resolve, reject }; });
       },
@@ -1420,12 +2124,13 @@
       },
       is_calibrated: () => !!st.cal,
 
-      enable_demo(container) {
+      // opts.buttons: which demo buttons to show, e.g. ['jab', 'cross', 'stomp'].
+      enable_demo(container, opts) {
         if (st.demoInput) return;
         stopSource();
         st.source = 'demo';
         st.demoInput = new RE.DemoInput(cfg, (name, payload) => emitter.emit(name, payload));
-        if (container) st.demoUi = new RE.DemoController(container, st.demoInput);
+        if (container) st.demoUi = new RE.DemoController(container, st.demoInput, opts);
         if (st.session.startedAt === null) st.session.startedAt = RE.now();
       },
       disable_demo() {
@@ -1436,14 +2141,31 @@
         st.demoUi = null;
         if (st.source === 'demo') st.source = 'idle';
         st.snapshot = emptySnapshot();
+        st.loco.reset();
       },
 
       on: (name, fn) => emitter.on(name, fn),
 
       signals() {
-        if (st.source === 'demo' && st.demoInput) st.snapshot = st.demoInput.signals(RE.now());
+        if (st.source === 'demo' && st.demoInput) {
+          const now = RE.now();
+          const s = st.demoInput.signals(now);
+          st.loco.update(now, s, st.mode);
+          s.speed = st.loco.speed;
+          st.snapshot = s;
+        }
         return Object.assign({}, st.snapshot);
       },
+
+      // Locomotion state: {state: idle | walk | run, speed, target_speed,
+      // facing (degrees), lateral (-1..1, rails only)}.
+      locomotion() {
+        if (st.source === 'demo') api.signals();
+        return st.loco.snapshot();
+      },
+      // Movement model, see locomotion.js: {rails, at_intersection(),
+      // branch_bearing(side), target_bearing()}.
+      set_movement(model) { st.loco.setModel(model || {}); },
 
       set_mode(mode) {
         if (!MODES.includes(mode)) throw new Error('unknown mode ' + mode);
@@ -1461,16 +2183,16 @@
       is_recording: () => st.recorder.active,
       recording_ms: () => st.recorder.elapsedMs,
 
-      // Milestone 1 summary; work/rest split and per-gesture reps fill in
-      // as detectors land.
+      // Session telemetry. activeMs is time spent moving (walk or run);
+      // strike totals and the work/rest split arrive with the combat module.
       session_summary() {
-        const end = st.raw ? st.raw.t : RE.now();
-        return {
+        const end = st.raw && st.source !== 'demo' ? st.raw.t : RE.now();
+        return Object.assign({
           startedAt: st.session.startedAt,
           durationMs: st.session.startedAt === null ? 0 : Math.max(0, end - st.session.startedAt),
           frames: st.session.frames,
           events: Object.assign({}, st.session.counts),
-        };
+        }, st.loco.summary());
       },
 
       // Debug view for the overlay and tests. Games should not depend on it.
@@ -1488,6 +2210,9 @@
           calibration: st.calibrator ? st.calStatus : null,
           signals: api.signals(),
           rawSignals: st.sig,
+          detectors: st.det,
+          demo: st.demoInput,
+          locomotion: st.loco.snapshot(),
         };
       },
 
@@ -1498,7 +2223,7 @@
   };
 
   function emptySnapshot() {
-    return { cadence_spm: 0, effort: 0, speed: 0, lean: 0, squat_depth: 0, guard_up: false, confidence: 0 };
+    return { cadence_spm: 0, effort: 0, speed: 0, turn: 0, lean: 0, squat_depth: 0, guard_up: false, confidence: 0 };
   }
 })(globalThis);
 </script>

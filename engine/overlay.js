@@ -6,10 +6,12 @@
 
   const BARS = [
     // [label, getter, min, max]
+    ['turn', (s) => s.turn, -1, 1],
     ['lean', (s) => s.lean, -1, 1],
     ['squat', (s) => s.squat_depth, 0, 1],
     ['cadence', (s) => s.cadence_spm, 0, 220],
     ['effort', (s) => s.effort, 0, 1],
+    ['speed', (s) => s.speed, 0, 3.5],
     ['conf', (s) => s.confidence, 0, 1],
   ];
 
@@ -90,7 +92,7 @@
       // panel
       const s = d.signals;
       const pad = 10, bw = 150, rowH = 18;
-      const lines = 2 + BARS.length + 1 + this.log.length;
+      const lines = 3 + BARS.length + 1 + this.log.length;
       const panelH = pad * 2 + lines * rowH;
       const panelW = Math.min(W - 16, 300);
       ctx.fillStyle = 'rgba(0,0,0,.6)';
@@ -108,6 +110,8 @@
       const text = (str, color = '#fff') => { ctx.fillStyle = color; ctx.fillText(fit(str), 8 + pad, y); y += rowH; };
       text(`${d.source} · ${d.fps ? d.fps.toFixed(0) + ' fps' : '-- fps'} · ${d.mode}`);
       text(d.cal ? `cal ${d.cal.orientation} · S ${d.cal.shoulderWidth.toFixed(0)}px T ${d.cal.torsoLength.toFixed(0)}px` : 'not calibrated', d.cal ? '#cfe' : '#fc8');
+      const m = d.locomotion;
+      text(m ? `${m.state} · facing ${m.facing.toFixed(0)}° · lateral ${m.lateral.toFixed(2)}` : '', '#cfe');
       for (const [label, get, lo, hi] of BARS) {
         const v = s ? get(s) : null;
         ctx.fillStyle = '#fff';
