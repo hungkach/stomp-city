@@ -46,7 +46,8 @@
     <p>You are 30 meters of bad news. The city has excellent insurance.</p>
     <ul>
       <li>March in place to stomp forward</li>
-      <li>Lean left or right to turn</li>
+      <li>Turn your shoulders left or right to steer</li>
+      <li>Both hands overhead to turn around</li>
       <li>Punch straight to smash what's in front</li>
       <li>Hook to swipe a wide arc</li>
       <li>Stomp (knee up, slam down) to flatten everything nearby</li>
@@ -92,8 +93,8 @@
     roundCapMs: 300000,    // time bonuses cap a round near 5 minutes
     restMs: 60000,         // rest between rounds
     rounds: 3,
-    walkSpeed: 13,         // units per second at 110 steps per minute
-    runBoost: 1.6,
+    walkSpeed: 13,         // units per second at the engine's walk speed (110 steps per minute)
+    spinMs: 450,           // turn_around plays as a quick 180 spin
     turnRate: 80,          // degrees per second at full torso turn (engine turn = 1)
     monsterRadius: 6,
     punch: { range: 20, cone: 35, damage: 40 },
@@ -106,6 +107,9 @@
   };
 
   const engine = RE.create({ video: $('pip'), preset: 'living_room' });
+  engine.set_movement({ rails: false });
+  // engine locomotion speed is in its own world units; scale walk speed to ours
+  const SPEED_SCALE = T.walkSpeed / RE.defaultConfig().locomotion.walkSpeed;
 
   // ---------- seeded random ----------
   function rng(seed) {
@@ -148,7 +152,7 @@
   }
 
   // ---------- monster ----------
-  const mon = { x: 0, z: 0, yaw: 0, speed: 0, legPhase: 0, punchT: 0, punchHand: 1, hookT: 0, stompT: 0 };
+  const mon = { x: 0, z: 0, yaw: 0, speed: 0, spin: 0, legPhase: 0, punchT: 0, punchHand: 1, hookT: 0, stompT: 0 };
 
   const fwd = (yaw) => ({ x: Math.sin(yaw), z: Math.cos(yaw) });
   const right = (yaw) => ({ x: Math.cos(yaw), z: -Math.sin(yaw) });
@@ -160,7 +164,7 @@
     shake: 0, particles: [], useCamera: false,
     roundStats: null, totals: null,
   };
-  const zeroStats = () => ({ steps: 0, stomps: 0, punches: 0, hooks: 0, buildings: 0, score: 0, activeMs: 0 });
+  const zeroStats = () => ({ steps: 0, stomps: 0, punches: 0, hooks: 0, turnArounds: 0, buildings: 0, score: 0, activeMs: 0, runMs: 0 });
 
   const HEADLINES = [
     'Zoning board calls emergency meeting',
@@ -175,6 +179,11 @@
 
   // ---------- engine events ----------
   engine.on('step', () => { if (G.state === 'round') { G.roundStats.steps++; mon.legPhase += Math.PI; } });
+  engine.on('turn_around', () => {
+    if (G.state !== 'round') return;
+    G.roundStats.turnArounds++;
+    mon.spin += Math.PI; // played out over spinMs in update()
+  });
   engine.on('strike', (e) => {
     if (G.state !== 'round') return;
     if (e.type === 'hook') { G.roundStats.hooks++; mon.hookT = 1; attack(T.hook, e.power || 1); }
@@ -246,13 +255,18 @@
   function update(dt, now) {
     if (G.state === 'round') {
       const s = engine.signals();
-      // march: speed follows cadence; high cadence counts as running
-      const cadence = s.cadence_spm || 0;
-      let target = Math.min(cadence / 110, 1.4) * T.walkSpeed;
-      if (cadence >= 150) target *= T.runBoost;
-      mon.speed += (target - mon.speed) * Math.min(1, dt * 3);
+      // march: the engine's locomotion state machine sets speed (cadence,
+      // run_start/run_end, stop when steps stop) and already ramps it
+      const loco = engine.locomotion();
+      mon.speed = loco.speed * SPEED_SCALE;
+      if (loco.state === 'run') G.roundStats.runMs += dt * 1000;
       // torso turn steers: the engine deadzones it and scales it to -1..1
       mon.yaw += (s.turn || 0) * T.turnRate * Math.PI / 180 * dt;
+      if (mon.spin > 0) {
+        const d = Math.min(mon.spin, Math.PI * dt * 1000 / T.spinMs);
+        mon.yaw += d;
+        mon.spin -= d;
+      }
 
       const f = fwd(mon.yaw);
       const nx = mon.x + f.x * mon.speed * dt, nz = mon.z + f.z * mon.speed * dt;
@@ -497,7 +511,7 @@
   function startRound() {
     G.round++;
     city = makeCity(1000 + G.round * 77 + Math.floor(Math.random() * 1e6));
-    Object.assign(mon, { x: 0, z: 0, yaw: 0, speed: 0 });
+    Object.assign(mon, { x: 0, z: 0, yaw: 0, speed: 0, spin: 0 });
     G.roundStats = zeroStats();
     G.bonusMs = 0;
     G.combo = 0;
@@ -523,7 +537,8 @@
   function statRows(s) {
     return [
       ['Buildings dropped', s.buildings], ['Score', s.score.toLocaleString()], ['Steps', s.steps],
-      ['Stomps', s.stomps], ['Punches', s.punches], ['Hooks', s.hooks], ['Work time', fmtMin(s.activeMs)],
+      ['Stomps', s.stomps], ['Punches', s.punches], ['Hooks', s.hooks], ['Turn arounds', s.turnArounds],
+      ['Run time', fmtMin(s.runMs)], ['Work time', fmtMin(s.activeMs)],
     ].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
   }
 
@@ -534,6 +549,7 @@
     const n = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
     const restMin = ((T.rounds - 1) * T.restMs) / 60000;
     lines.push(`<p><b>Conditioning:</b> ${fmtMin(t.activeMs)} of work across ${T.rounds} rounds with ${restMin} minute${restMin === 1 ? '' : 's'} of rest. Marching ${n(t.steps, 'step')} between bursts is low-intensity steady state.</p>`);
+    if (t.runMs >= 1000) lines.push(`<p><b>Intervals:</b> ${fmtMin(t.runMs)} running on top of the march, short bursts that push your heart rate up.</p>`);
     if (t.stomps) lines.push(`<p><b>Single-leg power:</b> ${n(t.stomps, 'stomp')}, each a knee drive into a forceful landing.</p>`);
     if (t.punches + t.hooks) lines.push(`<p><b>Upper-body power:</b> ${t.punches} straight punch${t.punches === 1 ? '' : 'es'} and ${n(t.hooks, 'hook')} for rotational speed.</p>`);
     $('payoff').innerHTML = lines.join('');
@@ -554,13 +570,13 @@
 
   // Show only the touch buttons this game uses.
   function enableTouch() {
-    engine.enable_demo($('demo'), { buttons: ['jab', 'cross', 'hook', 'stomp'] });
+    engine.enable_demo($('demo'), { buttons: ['turn_around', 'jab', 'cross', 'hook', 'stomp'] });
   }
 
   $('playDemo').addEventListener('click', () => {
     enableTouch();
     startGame(false);
-    note('Left zone: tap to march, double-tap and hold to run. Right zone: drag to turn. Buttons: Jab, Cross, Hook, Stomp.', 7000);
+    note('Left zone: tap to march, double-tap and hold to run. Right zone: drag to turn. Buttons: Turn 180, Jab, Cross, Hook, Stomp.', 7000);
   });
 
   $('playCamera').addEventListener('click', async () => {

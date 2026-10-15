@@ -4,14 +4,14 @@ Kaiju smash fitness game, third person from behind the monster. Play: https://hu
 
 ## Now playable (touch controls)
 
-- March to walk the monster forward, lean to turn, jab or cross to smash what's in front, hook to swipe a wide arc, stomp to flatten everything nearby.
+- March to walk the monster forward, turn your shoulders to steer, both hands overhead to turn around, jab or cross to smash what's in front, hook to swipe a wide arc, stomp to flatten everything nearby.
 - Walking into a building still damages it.
 - 3 rounds of 3 minutes. Each building dropped adds 1 s (2 s once the combo reaches 3), capped at 5 minutes a round. 60 s rest between rounds; the city regenerates each round.
 - Summary names the S&C payoff: conditioning time, single-leg power from stomps, upper-body power from punches and hooks.
 
 ## Camera mode
 
-Calibration and lean turning work now. Marching, punches and stomps on camera need the milestone 2 and 3 detectors; the game reads them through `engine.on('step' | 'strike' | 'stomp')`, so nothing here changes when they land.
+Engine 0.2.0: calibration, marching, running, torso turn steering and turn around work on camera. Punches and stomps need the milestone 3 detectors; the game reads them through `engine.on('strike' | 'stomp')`, so nothing here changes when they land.
 
 ## Engine needs from later milestones
 
